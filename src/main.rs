@@ -83,21 +83,21 @@ fn main() -> Result<(), String> {
         Commands::Audit { level } => audit::audit(level.unwrap_or(10)),
         Commands::Search { search_string } => {
             let modules = search::search_modules(search_string, 0.8);
-            para::print_modules(modules, true);
+            para_audit::print_modules(modules, true);
         },
         Commands::List { root } => {
             match root {
                 Some(root) => match &root[..] {
-                    "all" | "a" => para::print_modules(
-                        para::get_module_paths(),
+                    "all" | "a" => para_audit::print_modules(
+                        para_audit::get_module_paths(),
                         true,
                     ),
-                    root => para::print_modules(
+                    root => para_audit::print_modules(
                         search::list_rooted_modules(root)?,
                         true,
                     ),
                 }
-                None => para::print_modules(
+                None => para_audit::print_modules(
                     search::list_rooted_modules("projects")?,
                     true,
                 ),
@@ -113,7 +113,7 @@ fn main() -> Result<(), String> {
                     match potential_modules.len() {
                         1 => potential_modules[0].clone(),
                         x if x > 1 => {
-                            para::eprint_modules(potential_modules);
+                            para_audit::eprint_modules(potential_modules);
                             return Err("ambiguous module name".to_string());
                         },
                         _ => {
@@ -132,7 +132,7 @@ fn main() -> Result<(), String> {
                     match potential_modules.len() {
                         1 => potential_modules[0].clone(),
                         x if x > 1 => {
-                            para::eprint_modules(potential_modules);
+                            para_audit::eprint_modules(potential_modules);
                             return Err("ambiguous module name".to_string());
                         },
                         _ => {return Err("can't find a match".to_string());}
@@ -181,7 +181,7 @@ fn main() -> Result<(), String> {
             .into_iter()
             .filter(|(_,y)| y >= &count)
             .for_each(|(x,y)|
-                para::print_count(&x[..], y)
+                para_audit::print_count(&x[..], y)
             );
         },
         Commands::Fix { level } => audit::propose_fixes(level.unwrap_or(10)),

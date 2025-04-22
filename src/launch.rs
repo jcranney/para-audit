@@ -8,7 +8,7 @@ pub fn open(module: &PathBuf) -> Result<(), String> {
         module.file_name().unwrap().to_str().unwrap(),
     ).green().italic());
     
-    if let Some(yaml) = para::read_yaml(module) {
+    if let Some(yaml) = para_audit::read_yaml(module) {
         let cmd = yaml["open"]
             .as_sequence()
             .map(|s| s.iter()
