@@ -2,6 +2,12 @@
 name = "para-audit"
 version = "0.1.0"
 edition = "2021"
+description = "A simple CLT for supervising/interfacing with a storage convention based on Tiago Forte's Second Brain - PARA principle."
+readme = "README.md"
+repository = "https://github.com/jcranney/para-audit"
+license = "MIT"
+keywords = ["CLI","CLT","PARA","Second Brain"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.5.16", features = ["derive"] }
