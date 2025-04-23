@@ -6,7 +6,7 @@ description = "A simple CLT for supervising/interfacing with a storage conventio
 readme = "README.md"
 repository = "https://github.com/jcranney/para-audit"
 license = "MIT"
-keywords = ["CLI","CLT","PARA","Second Brain"]
+keywords = ["cli","clt","para","second-brain"]
 categories = ["command-line-utilities"]
 
 [dependencies]
