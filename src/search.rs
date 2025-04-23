@@ -1,8 +1,8 @@
 use std::path::{Path,PathBuf};
 use colored::Colorize;
 use std::collections::HashMap;
-use para_audit::*;
 
+use crate::{get_module_paths, get_root_paths, read_yaml};
 
 pub fn search_modules(s: &str, precision: f64) -> Vec<PathBuf> {
     let module_paths = get_module_paths();
@@ -62,7 +62,7 @@ pub fn list_rooted_modules(root: &str) -> Result<Vec<PathBuf>, String> {
 pub fn search_by_tag(tag: &str) -> Vec<PathBuf> {
     let mut modules: Vec<PathBuf> = vec![];
     for module in get_module_paths() {
-        if let Some(yaml) = para_audit::read_yaml(&module) {
+        if let Some(yaml) = read_yaml(&module) {
             if let Some(tags) = yaml["tags"].as_sequence() {
                 if tags
                 .iter()
@@ -79,7 +79,7 @@ pub fn search_by_tag(tag: &str) -> Vec<PathBuf> {
 
 pub fn get_module_tags(module: &Path) -> Vec<String> {
     let mut module_tags = vec![];
-    if let Some(yaml) = para_audit::read_yaml(module) {
+    if let Some(yaml) = read_yaml(module) {
         if let Some(tags) = yaml["tags"].as_sequence() {
             for tag in tags {
                 if let Some(t) = tag.as_str().map(|x| x.to_string()) {

@@ -1,6 +1,8 @@
 use std::{env, path::{Path, PathBuf}, process::Command};
 use colored::Colorize;
 
+use crate::read_yaml;
+
 pub fn open(module: &PathBuf) -> Result<(), String> {
     // print module path to std for "goto"/"cd" like command
     eprintln!("{}", format!(
@@ -8,7 +10,7 @@ pub fn open(module: &PathBuf) -> Result<(), String> {
         module.file_name().unwrap().to_str().unwrap(),
     ).green().italic());
     
-    if let Some(yaml) = para_audit::read_yaml(module) {
+    if let Some(yaml) = read_yaml(module) {
         let cmd = yaml["open"]
             .as_sequence()
             .map(|s| s.iter()

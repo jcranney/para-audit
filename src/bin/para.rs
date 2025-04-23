@@ -1,10 +1,6 @@
-mod audit;
-mod search;
-mod launch;
-mod layout;
 use clap::{Parser, Subcommand};
-use search::find_root;
 use std::path::PathBuf;
+use para_audit::{audit, launch, layout, search};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -139,7 +135,7 @@ fn main() -> Result<(), String> {
                     }
                 }
             };
-            if let Some(root) = find_root(destroot) {
+            if let Some(root) = search::find_root(destroot) {
                 layout::mv(module, root)?;
             } else {
                 return Err("invalid destination name".to_string());

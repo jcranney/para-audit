@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 use colored::Colorize;
-use para_audit::*;
 use regex::Regex;
 
 use std::collections::HashMap;
 
-use crate::search;
+use crate::{get_home_path, get_module_paths, get_root_paths, print_count, search, visit_all};
 
 #[derive(Debug)]
 enum Violation {
@@ -283,7 +282,7 @@ fn get_violations() -> Vec<Violation> {
     module_paths.iter()
     .map(|p| {
         let mut count: u64 = 0;
-        para_audit::visit_all(p, &mut |_| {count += 1;});
+        visit_all(p, &mut |_| {count += 1;});
         (p,count)
     })
     .filter(|(_,x)| *x > 1000)
@@ -315,12 +314,12 @@ pub fn audit(level: u32) {
 
 pub fn stats(min_count: u32) {
     let mut filecount: u32 = 0;
-    para_audit::visit_all(&para_audit::get_home_path(), &mut |_| {filecount += 1;} );
-    para_audit::print_count("total files", filecount);
+    visit_all(&get_home_path(), &mut |_| {filecount += 1;} );
+    print_count("total files", filecount);
 
     let mut ext_count: HashMap<String,u32> = HashMap::new();
-    para_audit::visit_all(
-        &para_audit::get_home_path(),
+    visit_all(
+        &get_home_path(),
         &mut |path: &PathBuf| {
             if path.is_file() {
                 ext_count
@@ -341,6 +340,6 @@ pub fn stats(min_count: u32) {
         .collect::<Vec<(String,u32)>>();
     results.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
     results.into_iter().for_each(|(a,b)|
-        para_audit::print_count(&a[..], b)
+        print_count(&a[..], b)
     );
 }

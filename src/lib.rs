@@ -3,6 +3,10 @@ use std::path::{Path,PathBuf};
 use colored::Colorize;
 use colored::CustomColor;
 use std::fs;
+pub mod audit;
+pub mod search;
+pub mod launch;
+pub mod layout;
 
 #[must_use]
 pub fn get_home_path() -> PathBuf {
