@@ -34,8 +34,6 @@ pub fn open(module: &PathBuf) -> Result<(), String> {
             }
             command.current_dir(module);
             command.status().or(Err("failed to spawn `open` command from para.yaml"))?;
-        } else {
-            eprintln!("{}", "couldn't parse para.yaml `open` as command sequence".red().italic());
         }
         if let Some(git) = yaml["git"].as_str() {
             init_git(git, module)?;

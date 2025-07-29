@@ -1,5 +1,4 @@
 use std::path::{Path,PathBuf};
-use colored::Colorize;
 use std::collections::HashMap;
 
 use crate::{get_module_paths, get_root_paths, read_yaml};
@@ -47,7 +46,7 @@ pub fn list_rooted_modules(root: &str) -> Result<Vec<PathBuf>, String> {
     }).collect();
 
     if root_paths.is_empty() {
-        return Err(format!("{}: {}", "invalid root".red(), root));
+        return Err(format!("{}: {}", "invalid root", root));
     }
 
     let root_path = root_paths[0];
