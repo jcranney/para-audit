@@ -23,6 +23,7 @@ enum Violation {
     GitNotSynced { count: usize, repo: PathBuf },
     GitBroken { code: String, path: PathBuf },
     GitNameInvalid { module: PathBuf, name: String },
+    GitNoRemote { repo: PathBuf },
 }
 
 enum Fix {
@@ -163,6 +164,7 @@ impl std::fmt::Display for Violation {
                 ),
                 Violation::GitNameInvalid { module, name } =>
                     format!("{}, {}: {}", "invalid git".red(), name, module.display()),
+                Violation::GitNoRemote { repo } => format!("{}: {}", "no remote repo".red(), repo.display()),
             }
         )?;
         Ok(())
@@ -184,6 +186,7 @@ impl Violation {
             Violation::GitNotSynced { .. } => 3,
             Violation::GitBroken { .. } => 3,
             Violation::GitNameInvalid { .. } => 3,
+            Violation::GitNoRemote { .. } => 3,
         }
     }
 }
@@ -326,12 +329,18 @@ fn get_violations() -> Vec<Violation> {
                         match Repository::open(&repo_path) {
                             Ok(repo) => {
                                 let statuses = repo.statuses(None).unwrap();
-                                let count: usize = statuses.iter().filter(|s| s.status() != Status::IGNORED).count();
+                                let count: usize = statuses
+                                    .iter()
+                                    .filter(|s| s.status() != Status::IGNORED)
+                                    .count();
                                 if count > 0 {
                                     violations.push(Violation::GitNotSynced {
                                         count,
-                                        repo: repo_path,
+                                        repo: repo_path.clone(),
                                     });
+                                }
+                                if repo.remotes().unwrap().len() == 0 {
+                                    violations.push(Violation::GitNoRemote { repo: repo_path });
                                 }
                             }
                             Err(e) => {
