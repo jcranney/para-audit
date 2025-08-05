@@ -1,5 +1,5 @@
 use colored::Colorize;
-use git2::Repository;
+use git2::{Repository, Status};
 use regex::Regex;
 use std::{fmt::Debug, path::PathBuf};
 
@@ -326,9 +326,10 @@ fn get_violations() -> Vec<Violation> {
                         match Repository::open(&repo_path) {
                             Ok(repo) => {
                                 let statuses = repo.statuses(None).unwrap();
-                                if statuses.len() > 0 {
+                                let count: usize = statuses.iter().filter(|s| s.status() != Status::IGNORED).count();
+                                if count > 0 {
                                     violations.push(Violation::GitNotSynced {
-                                        count: statuses.len(),
+                                        count,
                                         repo: repo_path,
                                     });
                                 }
