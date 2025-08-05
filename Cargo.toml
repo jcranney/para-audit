@@ -10,8 +10,9 @@ keywords = ["cli","clt","para","second-brain"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-clap = { version = "4.5.41", features = ["derive"] }
+clap = { version = "4.5.42", features = ["derive"] }
 colored = "3.0.0"
+git2 = "0.20.2"
 glob = "0.3.2"
 regex = "1.11.1"
 serde_yaml = "0.9.34-deprecated"

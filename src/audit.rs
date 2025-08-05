@@ -1,37 +1,34 @@
-use std::path::PathBuf;
 use colored::Colorize;
+use git2::Repository;
 use regex::Regex;
+use std::{fmt::Debug, path::PathBuf};
 
 use std::collections::HashMap;
 
-use crate::{get_home_path, get_module_paths, get_root_paths, print_count, search, visit_all};
+use crate::{
+    get_home_path, get_module_paths, get_root_paths, print_count, read_yaml, search, visit_all,
+};
 
 #[derive(Debug)]
 enum Violation {
     RootDirClutter(PathBuf),
     ModDirClutter(PathBuf),
     ModDirName(PathBuf),
-    ModRequiredFileMissing{
-        file: String,
-        module: PathBuf,
-    },
+    ModRequiredFileMissing { file: String, module: PathBuf },
     DisallowedFile(PathBuf),
     EmptyModule(PathBuf),
     DuplicateModules(PathBuf, PathBuf),
-    TooManyFiles {
-        module: PathBuf,
-        filecount: u64,
-    },
+    TooManyFiles { module: PathBuf, filecount: u64 },
     NoTags(PathBuf),
+    GitNotSynced { count: usize, repo: PathBuf },
+    GitBroken { code: String, path: PathBuf },
+    GitNameInvalid { module: PathBuf, name: String },
 }
 
 enum Fix {
     MoveFile(PathBuf),
     ModName(PathBuf),
-    CreateFile {
-        file: String,
-        module: PathBuf,
-    },
+    CreateFile { file: String, module: PathBuf },
     Delete(PathBuf),
     EditFile(PathBuf),
     None,
@@ -40,8 +37,7 @@ enum Fix {
 impl Violation {
     fn fix(self) -> Fix {
         match self {
-            Violation::RootDirClutter(p) | 
-            Violation::ModDirClutter(p) => Fix::MoveFile(p),
+            Violation::RootDirClutter(p) | Violation::ModDirClutter(p) => Fix::MoveFile(p),
             Violation::ModDirName(p) => Fix::ModName(p),
             Violation::ModRequiredFileMissing { file, module } => Fix::CreateFile { file, module },
             Violation::DisallowedFile(p) | Violation::EmptyModule(p) => Fix::Delete(p),
@@ -60,33 +56,45 @@ impl std::fmt::Display for Fix {
                     .unwrap()
                     .join("CLUTTER")
                     .join(p.file_name().unwrap());
-                writeln!(f, "mv \"{}\" \"{}\"", source.display(), destination.display())?;
-            },
+                writeln!(
+                    f,
+                    "mv \"{}\" \"{}\"",
+                    source.display(),
+                    destination.display()
+                )?;
+            }
             Fix::ModName(p) => {
                 let source = p.clone();
-                let destination = p.clone()
-                    .parent()
-                    .unwrap()
-                    .join(
-                        p.file_name()
+                let destination = p.clone().parent().unwrap().join(
+                    p.file_name()
                         .unwrap()
                         .to_str()
                         .unwrap()
                         .to_string()
-                        .replace(['-',' ','.'], "_")
-                        .to_lowercase()
-                    );
-                writeln!(f, "mv \"{}\" \"{}\"", source.display(), destination.display())?;
-            },
+                        .replace(['-', ' ', '.'], "_")
+                        .to_lowercase(),
+                );
+                writeln!(
+                    f,
+                    "mv \"{}\" \"{}\"",
+                    source.display(),
+                    destination.display()
+                )?;
+            }
             Fix::CreateFile { file, module } => {
                 writeln!(f, "touch \"{}\"", module.join(file).display())?;
-            },
+            }
             Fix::Delete(p) => {
-                writeln!(f, "rm {}\"{}\"", match p.is_dir() {
-                    true => "-rf ",
-                    false => "",
-                }, p.display())?;
-            },
+                writeln!(
+                    f,
+                    "rm {}\"{}\"",
+                    match p.is_dir() {
+                        true => "-rf ",
+                        false => "",
+                    },
+                    p.display()
+                )?;
+            }
             Fix::EditFile(p) => {
                 writeln!(f, "vim {}", p.display())?;
             }
@@ -107,48 +115,56 @@ pub fn propose_fixes(level: u32) {
 
 impl std::fmt::Display for Violation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Violation::RootDirClutter(pathbuf) => {
-                format!("{}: {}", "root dir clutter".red(), pathbuf.display())
-            },
-            Violation::ModDirClutter(pathbuf) => {
-                format!("{}: {}", "module dir clutter".red(), pathbuf.display())
-            },
-            Violation::ModDirName(pathbuf) => {
-                format!("{}: {}", "invalid module name".red(), pathbuf.display())
-            },
-            Violation::ModRequiredFileMissing{file,module} => {
-                format!(
+        write!(
+            f,
+            "{}",
+            match self {
+                Violation::RootDirClutter(pathbuf) =>
+                    format!("{}: {}", "root dir clutter".red(), pathbuf.display()),
+                Violation::ModDirClutter(pathbuf) =>
+                    format!("{}: {}", "module dir clutter".red(), pathbuf.display()),
+                Violation::ModDirName(pathbuf) =>
+                    format!("{}: {}", "invalid module name".red(), pathbuf.display()),
+                Violation::ModRequiredFileMissing { file, module } => format!(
                     "{} {}: {}",
                     "module missing".red(),
                     file.yellow(),
-                    module.display())
-            },
-            Violation::DisallowedFile(pathbuf) => {
-                format!(
-                    "{}: {}",
-                    "disallowed file".red(),
-                    pathbuf.display(),
-                )
-            },
-            Violation::EmptyModule(pathbuf) => {
-                format!("{}: {}", "empty module".red(), pathbuf.display())
-            },
-            Violation::DuplicateModules(a,b) => {
-                format!("{}: {} {}", "duplicate module".red(), a.display(), b.display())
-            },
-            Violation::TooManyFiles { module, filecount } => {
-                format!(
+                    module.display()
+                ),
+                Violation::DisallowedFile(pathbuf) =>
+                    format!("{}: {}", "disallowed file".red(), pathbuf.display(),),
+                Violation::EmptyModule(pathbuf) =>
+                    format!("{}: {}", "empty module".red(), pathbuf.display()),
+                Violation::DuplicateModules(a, b) => format!(
+                    "{}: {} {}",
+                    "duplicate module".red(),
+                    a.display(),
+                    b.display()
+                ),
+                Violation::TooManyFiles { module, filecount } => format!(
                     "{}: {} {}",
                     "too many files".red(),
                     filecount.to_string().yellow(),
                     module.display()
-                )
-            },
-            Violation::NoTags(yamlfile) => {
-                format!("{}: {}", "no tags".red(), yamlfile.display())
-            },
-        })?;
+                ),
+                Violation::NoTags(yamlfile) =>
+                    format!("{}: {}", "no tags".red(), yamlfile.display()),
+                Violation::GitNotSynced { repo, count } => format!(
+                    "{}, {}: {}",
+                    "git not synced".red(),
+                    format!("{} files", count).red().italic(),
+                    repo.display()
+                ),
+                Violation::GitBroken { code, path } => format!(
+                    "{}, {}: {}",
+                    "can't open git".red(),
+                    code.red(),
+                    path.display()
+                ),
+                Violation::GitNameInvalid { module, name } =>
+                    format!("{}, {}: {}", "invalid git".red(), name, module.display()),
+            }
+        )?;
         Ok(())
     }
 }
@@ -163,8 +179,11 @@ impl Violation {
             Violation::DisallowedFile(_) => 2,
             Violation::EmptyModule(_) => 1,
             Violation::DuplicateModules(..) => 1,
-            Violation::TooManyFiles{..} => 3,
+            Violation::TooManyFiles { .. } => 3,
             Violation::NoTags(..) => 4,
+            Violation::GitNotSynced { .. } => 3,
+            Violation::GitBroken { .. } => 3,
+            Violation::GitNameInvalid { .. } => 3,
         }
     }
 }
@@ -192,7 +211,7 @@ fn get_violations() -> Vec<Violation> {
             }
         }
     }
-    
+
     let module_paths = get_module_paths();
     let re = Regex::new("[-, ,\\.,A-Z]").unwrap();
     // this is a list of all module directories:
@@ -203,22 +222,21 @@ fn get_violations() -> Vec<Violation> {
     });
 
     // Check each second level dir to see if it contains the required files:
-    let required_files: Vec<String> = vec![
-        "README.md".to_string(),
-        "para.yaml".to_string(),
-    ];
+    let required_files: Vec<String> = vec!["README.md".to_string(), "para.yaml".to_string()];
 
     // go into each module directory and verify that the required files are there:
     for module in &module_paths {
-        let files: Vec<String> = module.read_dir()
-        .expect("failed to read module")
-        .filter_map(|mod_element| mod_element.ok())
-        .filter_map(|entry| 
-            entry.path().file_name().and_then(|name|
-                name.to_str().map(|s| s.to_string())
-            )
-        )
-        .collect();
+        let files: Vec<String> = module
+            .read_dir()
+            .expect("failed to read module")
+            .filter_map(|mod_element| mod_element.ok())
+            .filter_map(|entry| {
+                entry
+                    .path()
+                    .file_name()
+                    .and_then(|name| name.to_str().map(|s| s.to_string()))
+            })
+            .collect();
         if files.is_empty() {
             violations.push(Violation::EmptyModule(module.clone()));
         }
@@ -248,13 +266,14 @@ fn get_violations() -> Vec<Violation> {
         ".mypy_cache",
         "__pycache__",
         "tmp",
-    ].iter().map(|x| x.to_string()).collect();
-    
+    ]
+    .iter()
+    .map(|x| x.to_string())
+    .collect();
+
     // for the next tests, we need to check every single file/directory
     visit_all(&home_path, &mut |pathbuf| {
-        let filename = pathbuf.file_name().unwrap()
-        .to_str().unwrap()
-        .to_string();
+        let filename = pathbuf.file_name().unwrap().to_str().unwrap().to_string();
         if disallowed_files.contains(&filename) {
             violations.push(Violation::DisallowedFile(pathbuf.clone()))
         }
@@ -271,25 +290,68 @@ fn get_violations() -> Vec<Violation> {
             let modname_j = module_j.file_name().unwrap().to_str().unwrap();
             if strsim::jaro(modname_i, modname_j) > 0.96 {
                 violations.push(Violation::DuplicateModules(
-                    module_i.clone(), 
-                    module_j.clone()
+                    module_i.clone(),
+                    module_j.clone(),
                 ));
             }
         }
     }
 
     // check for too many files
-    module_paths.iter()
-    .map(|p| {
-        let mut count: u64 = 0;
-        visit_all(p, &mut |_| {count += 1;});
-        (p,count)
-    })
-    .filter(|(_,x)| *x > 1000)
-    .for_each(|(p,count)| violations.push(Violation::TooManyFiles { 
-        module: p.clone(), 
-        filecount:  count
-    }));
+    module_paths
+        .iter()
+        .map(|p| {
+            let mut count: u64 = 0;
+            visit_all(p, &mut |_| {
+                count += 1;
+            });
+            (p, count)
+        })
+        .filter(|(_, x)| *x > 1000)
+        .for_each(|(p, count)| {
+            violations.push(Violation::TooManyFiles {
+                module: p.clone(),
+                filecount: count,
+            });
+        });
+
+    // check the status of all git repos
+    module_paths.iter().for_each(|p| {
+        if let Some(yaml) = read_yaml(p) {
+            if let Some(git) = yaml["git"].as_str() {
+                match git.split('/').last() {
+                    Some(mut n) => {
+                        n = n.trim_end_matches(".git");
+                        let repo_path = p.join(n);
+                        match Repository::open(&repo_path) {
+                            Ok(repo) => {
+                                let statuses = repo.statuses(None).unwrap();
+                                if statuses.len() > 0 {
+                                    violations.push(Violation::GitNotSynced {
+                                        count: statuses.len(),
+                                        repo: repo_path,
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                violations.push(Violation::GitBroken {
+                                    code: format!("{:?}", e.code()),
+                                    path: repo_path,
+                                });
+                            }
+                        };
+                    }
+                    None => {
+                        violations.push(Violation::GitNameInvalid {
+                            module: p.to_path_buf(),
+                            name: git.to_owned(),
+                        });
+                    }
+                };
+            }
+        }
+    });
+
     violations
 }
 
@@ -304,7 +366,8 @@ pub fn audit(level: u32) {
     }
 
     // print summary
-    println!("para: {}",
+    println!(
+        "para: {}",
         match violations.len() {
             x if x > 0 => format!("{} violations", x.to_string().red()),
             _ => format!("{} violations", "zero".green()),
@@ -314,32 +377,30 @@ pub fn audit(level: u32) {
 
 pub fn stats(min_count: u32) {
     let mut filecount: u32 = 0;
-    visit_all(&get_home_path(), &mut |_| {filecount += 1;} );
+    visit_all(&get_home_path(), &mut |_| {
+        filecount += 1;
+    });
     print_count("total files", filecount);
 
-    let mut ext_count: HashMap<String,u32> = HashMap::new();
-    visit_all(
-        &get_home_path(),
-        &mut |path: &PathBuf| {
-            if path.is_file() {
-                ext_count
-                .entry(
-                    match path.extension().map(|x| x.to_str().unwrap()) {
-                        Some(ext) => ext.to_string(),
-                        None => "none".to_string(),
-                    }
-                ).and_modify(|x| *x+=1)
+    let mut ext_count: HashMap<String, u32> = HashMap::new();
+    visit_all(&get_home_path(), &mut |path: &PathBuf| {
+        if path.is_file() {
+            ext_count
+                .entry(match path.extension().map(|x| x.to_str().unwrap()) {
+                    Some(ext) => ext.to_string(),
+                    None => "none".to_string(),
+                })
+                .and_modify(|x| *x += 1)
                 .or_insert(1);
-            }
         }
-    );
+    });
 
     let mut results = ext_count
         .into_iter()
-        .filter(|(_,c)| c >= &min_count)
-        .collect::<Vec<(String,u32)>>();
-    results.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
-    results.into_iter().for_each(|(a,b)|
-        print_count(&a[..], b)
-    );
+        .filter(|(_, c)| c >= &min_count)
+        .collect::<Vec<(String, u32)>>();
+    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    results
+        .into_iter()
+        .for_each(|(a, b)| print_count(&a[..], b));
 }
