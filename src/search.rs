@@ -21,11 +21,28 @@ pub fn search_modules(s: &str, precision: f64) -> Vec<PathBuf> {
 }
 
 pub fn find_module(s: &str) -> Option<PathBuf> {
-    get_module_paths()
+    // search for exact name and return first match,
+    match get_module_paths()
     .into_iter()
     .find(
         |p| p.file_name().unwrap().to_str().unwrap() == s
-    )
+    ) {
+        Some(result) => return Some(result),
+        None => (),
+    };
+
+    // if not exact match, check for unique substring match,
+    let substring_matches = get_module_paths()
+    .into_iter()
+    .filter(
+        |p| p.file_name().unwrap().to_str().unwrap().contains(s)
+    ).collect::<Vec<PathBuf>>();
+    if substring_matches.len() == 1 {
+        return Some(substring_matches.first().unwrap().clone());
+    }
+
+    // if no unique substring match found, return None
+    None
 }
 
 pub fn find_root(s: &str) -> Option<PathBuf> {
