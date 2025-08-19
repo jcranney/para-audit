@@ -261,7 +261,6 @@ fn get_violations() -> Vec<Violation> {
         ".git",
         ".svn",
         "package-lock.json",
-        ".gitignore",
         "node_modules",
         "venv",
         "build",
