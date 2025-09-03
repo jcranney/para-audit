@@ -16,6 +16,14 @@ pub fn get_home_path() -> PathBuf {
     )
 }
 
+#[must_use]
+pub fn get_git_path() -> PathBuf {
+    PathBuf::from(
+        &env::var("PARA_GIT")
+        .expect("PARA_GIT environment variable not defined")
+    )
+}
+
 pub fn get_root_paths() -> Vec<PathBuf> {
     let home = get_home_path();
     // Check home dir for extra files/directories

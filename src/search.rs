@@ -22,13 +22,10 @@ pub fn search_modules(s: &str, precision: f64) -> Vec<PathBuf> {
 
 pub fn find_module(s: &str) -> Option<PathBuf> {
     // search for exact name and return first match,
-    match get_module_paths()
-    .into_iter()
-    .find(
+    if let Some(result) = get_module_paths().into_iter().find(
         |p| p.file_name().unwrap().to_str().unwrap() == s
     ) {
-        Some(result) => return Some(result),
-        None => (),
+        return Some(result)
     };
 
     // if not exact match, check for unique substring match,

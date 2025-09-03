@@ -1,7 +1,7 @@
-use std::{env, path::{Path, PathBuf}, process::Command};
+use std::{path::{Path, PathBuf}, process::Command};
 use colored::Colorize;
 
-use crate::read_yaml;
+use crate::{get_git_path, read_yaml};
 
 pub fn open(module: &PathBuf) -> Result<(), String> {
     // print module path to std for "goto"/"cd" like command
@@ -55,7 +55,7 @@ pub fn edit_note(note: PathBuf) -> Result<(), String> {
 
 fn init_git(git: &str, module: &Path) -> Result<(), String> {
     // get git repo name (will be dir name)
-    let name = match git.split('/').last() {
+    let name = match git.split('/').next_back() {
         Some(n) => n.trim_end_matches(".git"),
         None => return Err("para.yaml git url invalid".to_string()),
     };
@@ -67,9 +67,7 @@ fn init_git(git: &str, module: &Path) -> Result<(), String> {
     }
 
     // check if repo in downloads, if not, get it
-    let original = Path::new(
-        &env::var("HOME").expect("HOME env var not defined")
-    ).to_path_buf().join("Downloads").join(name);
+    let original = get_git_path().join(name);
     if !original.exists() {
         // doesn't exist, clone it:
         if let Ok(status) = Command::new("git")

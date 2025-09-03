@@ -68,14 +68,19 @@ and then run it with:
 ```bash
 para --help
 ```
-The only system configuration required is to set the environment variable `PARA_HOME`. This should point to the directory where you have those 4 folders above. For example, in my case I have:
+You are required to define the following two environment variables:
+ - `PARA_HOME`, this should point to the root directory where you can find the 4 top level folders (`projects`,`areas`,`resources`,`archive`).
+ - `PARA_GIT`, this should point to a folder where you would like your `git` repositories stored. In my case, I don't like synchronising my git repos to the cloud, so I usually have this set to my user `Downloads` folder, but equally appropriate would be a `$HOME/git` directory (for example).
+
+For example, in most of my machines I use:
 ```bash
 # file: ~/.zshrc
 # ...
-
 export PARA_HOME=$HOME/gdrive
+export PARA_GIT=$HOME/git
 ```
-where `$HOME/gdrive` is the location of my [insync](https://www.insynchq.com/) google drive directory.
+where `$HOME/gdrive` is the location of my [insync](https://www.insynchq.com/) google drive directory, and `$HOME/git` is an arbitrary location to dump all of my local clones of git repositories.
+
 
 ## Usage
 Once installed, the `para` command allows you to interact with your PARA storage system. For example, I run `para audit` every time a new shell is opened, giving me an update to the health of my organised file system. I also use `para ls` (equivalent to `para ls projects`) often, listing the modules in my `projects` folder, and of course `para open <module-name>` which allows me to open a module.

@@ -321,7 +321,7 @@ fn get_violations() -> Vec<Violation> {
     module_paths.iter().for_each(|p| {
         if let Some(yaml) = read_yaml(p) {
             if let Some(git) = yaml["git"].as_str() {
-                match git.split('/').last() {
+                match git.split('/').next_back() {
                     Some(mut n) => {
                         n = n.trim_end_matches(".git");
                         let repo_path = p.join(n);
@@ -338,7 +338,7 @@ fn get_violations() -> Vec<Violation> {
                                         repo: repo_path.clone(),
                                     });
                                 }
-                                if repo.remotes().unwrap().len() == 0 {
+                                if repo.remotes().unwrap().is_empty() {
                                     violations.push(Violation::GitNoRemote { repo: repo_path });
                                 }
                             }
