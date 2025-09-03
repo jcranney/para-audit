@@ -24,6 +24,7 @@ enum Violation {
     GitBroken { code: String, path: PathBuf },
     GitNameInvalid { module: PathBuf, name: String },
     GitNoRemote { repo: PathBuf },
+    GitBrokenSymlink(PathBuf),
 }
 
 enum Fix {
@@ -43,6 +44,7 @@ impl Violation {
             Violation::ModRequiredFileMissing { file, module } => Fix::CreateFile { file, module },
             Violation::DisallowedFile(p) | Violation::EmptyModule(p) => Fix::Delete(p),
             Violation::NoTags(p) => Fix::EditFile(p),
+            Violation::GitBrokenSymlink(path) => Fix::Delete(path),
             _ => Fix::None,
         }
     }
@@ -89,7 +91,7 @@ impl std::fmt::Display for Fix {
                 writeln!(
                     f,
                     "rm {}\"{}\"",
-                    match p.is_dir() {
+                    match p.is_dir() || p.is_symlink() {
                         true => "-rf ",
                         false => "",
                     },
@@ -164,7 +166,10 @@ impl std::fmt::Display for Violation {
                 ),
                 Violation::GitNameInvalid { module, name } =>
                     format!("{}, {}: {}", "invalid git".red(), name, module.display()),
-                Violation::GitNoRemote { repo } => format!("{}: {}", "no remote repo".red(), repo.display()),
+                Violation::GitNoRemote { repo } =>
+                    format!("{}: {}", "no remote repo".red(), repo.display()),
+                Violation::GitBrokenSymlink(path_buf) =>
+                    format!("{}: {}", "broken git symlink".red(), path_buf.display()),
             }
         )?;
         Ok(())
@@ -187,6 +192,7 @@ impl Violation {
             Violation::GitBroken { .. } => 3,
             Violation::GitNameInvalid { .. } => 3,
             Violation::GitNoRemote { .. } => 3,
+            Violation::GitBrokenSymlink(_) => 5,
         }
     }
 }
@@ -325,30 +331,42 @@ fn get_violations() -> Vec<Violation> {
                     Some(mut n) => {
                         n = n.trim_end_matches(".git");
                         let repo_path = p.join(n);
-                        match Repository::open(&repo_path) {
-                            Ok(repo) => {
-                                let statuses = repo.statuses(None).unwrap();
-                                let count: usize = statuses
-                                    .iter()
-                                    .filter(|s| s.status() != Status::IGNORED)
-                                    .count();
-                                if count > 0 {
-                                    violations.push(Violation::GitNotSynced {
-                                        count,
-                                        repo: repo_path.clone(),
+                        if repo_path.is_dir() {
+                            match Repository::open(&repo_path) {
+                                Ok(repo) => {
+                                    let statuses = repo.statuses(None).unwrap();
+                                    let count: usize = statuses
+                                        .iter()
+                                        .filter(|s| s.status() != Status::IGNORED)
+                                        .count();
+                                    if count > 0 {
+                                        violations.push(Violation::GitNotSynced {
+                                            count,
+                                            repo: repo_path.clone(),
+                                        });
+                                    }
+                                    if repo.remotes().unwrap().is_empty() {
+                                        violations.push(Violation::GitNoRemote { repo: repo_path });
+                                    }
+                                }
+                                Err(e) => {
+                                    violations.push(Violation::GitBroken {
+                                        code: format!("{:?}", e.code()),
+                                        path: repo_path,
                                     });
                                 }
-                                if repo.remotes().unwrap().is_empty() {
-                                    violations.push(Violation::GitNoRemote { repo: repo_path });
+                            };
+                        } else {
+                            // it's not a directory
+                            if !repo_path.is_file() {
+                                // and it's not a file
+                                if repo_path.is_symlink() {
+                                    // but it is still a symlink
+                                    // then it must be a broken symlink, so it should be deleted
+                                    violations.push(Violation::GitBrokenSymlink(repo_path));
                                 }
                             }
-                            Err(e) => {
-                                violations.push(Violation::GitBroken {
-                                    code: format!("{:?}", e.code()),
-                                    path: repo_path,
-                                });
-                            }
-                        };
+                        }
                     }
                     None => {
                         violations.push(Violation::GitNameInvalid {

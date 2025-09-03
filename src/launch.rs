@@ -1,22 +1,26 @@
-use std::{path::{Path, PathBuf}, process::Command};
 use colored::Colorize;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::{get_git_path, read_yaml};
 
 pub fn open(module: &PathBuf) -> Result<(), String> {
     // print module path to std for "goto"/"cd" like command
-    eprintln!("{}", format!(
-        "opening: {}",
-        module.file_name().unwrap().to_str().unwrap(),
-    ).green().italic());
-    
+    eprintln!(
+        "{}",
+        format!("opening: {}", module.file_name().unwrap().to_str().unwrap(),)
+            .green()
+            .italic()
+    );
+
     if let Some(yaml) = read_yaml(module) {
-        let cmd = yaml["open"]
-            .as_sequence()
-            .map(|s| s.iter()
+        let cmd = yaml["open"].as_sequence().map(|s| {
+            s.iter()
                 .map(|x| x.as_str().map(|s| s.to_string()))
                 .collect::<Vec<Option<String>>>()
-            );
+        });
         if let Some(cmd) = cmd {
             // command sequence exists
             let mut command: Command;
@@ -29,27 +33,31 @@ pub fn open(module: &PathBuf) -> Result<(), String> {
                 if let Some(arg) = arg {
                     command.arg(arg);
                 } else {
-                    return Err("failed to parse command arguments in para.yaml".to_string())
+                    return Err("failed to parse command arguments in para.yaml".to_string());
                 }
             }
             command.current_dir(module);
-            command.status().or(Err("failed to spawn `open` command from para.yaml"))?;
+            command
+                .status()
+                .or(Err("failed to spawn `open` command from para.yaml"))?;
         }
         if let Some(git) = yaml["git"].as_str() {
             init_git(git, module)?;
         }
     }
-    
+
     Command::new("zsh")
-    .current_dir(module)
-    .status().or(Err("couldn't start zsh"))?;
+        .current_dir(module)
+        .status()
+        .or(Err("couldn't start zsh"))?;
     Ok(())
 }
 
 pub fn edit_note(note: PathBuf) -> Result<(), String> {
     Command::new("code")
-    .arg(note)
-    .status().or(Err("Couldn't start vim"))?;
+        .arg(note)
+        .status()
+        .or(Err("Couldn't start vim"))?;
     Ok(())
 }
 
@@ -64,6 +72,15 @@ fn init_git(git: &str, module: &Path) -> Result<(), String> {
     if module.join(name).exists() {
         // already exists, no problem.
         return Ok(());
+    } else {
+        // file either doesn't exist, or is a broken symlink
+        if module.join(name).is_symlink() {
+            // must be a broken symlink, we can delete it and move on
+            if let Err(e) = std::fs::remove_file(module.join(name)) {
+                // error, do something
+                return Err(e.to_string());
+            }
+        }
     }
 
     // check if repo in downloads, if not, get it
@@ -71,25 +88,28 @@ fn init_git(git: &str, module: &Path) -> Result<(), String> {
     if !original.exists() {
         // doesn't exist, clone it:
         if let Ok(status) = Command::new("git")
-        .arg("clone")
-        .arg(git)
-        .arg(&original)
-        .status() {
+            .arg("clone")
+            .arg(git)
+            .arg(&original)
+            .status()
+        {
             if !status.success() {
                 return Err("git clone failed".to_string());
             }
         } else {
-            return Err(
-                "failed to start git".to_string()
-            );
+            return Err("failed to start git".to_string());
         }
     }
     // now there is a correctly named directory in the downlaods folder,
     // hopefully the git repo but if it's not then that's fine, whatever.
 
+    
     // make symbolic link here linking to cloned repo
     if let Err(e) = std::os::unix::fs::symlink(original, module.join(name)) {
-        return Err(e.to_string())
+        return Err(format!(
+            "{}, cannot create symbolic link for cloned repo.",
+            e.to_string()
+        ));
     }
 
     // done!
