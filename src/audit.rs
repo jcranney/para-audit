@@ -20,7 +20,7 @@ enum Violation {
     DuplicateModules(PathBuf, PathBuf),
     TooManyFiles { module: PathBuf, filecount: u64 },
     NoTags(PathBuf),
-    GitNotSynced { count: usize, repo: PathBuf },
+    GitNotSynced { module: PathBuf, count: usize, repo: PathBuf },
     GitBroken { code: String, path: PathBuf },
     GitNameInvalid { module: PathBuf, name: String },
     GitNoRemote { repo: PathBuf },
@@ -152,11 +152,12 @@ impl std::fmt::Display for Violation {
                 ),
                 Violation::NoTags(yamlfile) =>
                     format!("{}: {}", "no tags".red(), yamlfile.display()),
-                Violation::GitNotSynced { repo, count } => format!(
-                    "{}, {}: {}",
+                Violation::GitNotSynced {repo, count, module } => format!(
+                    "{}, {}: {}, {}",
                     "git not synced".red(),
                     format!("{} files", count).red().italic(),
-                    repo.display()
+                    repo.display(),
+                    module.display(),
                 ),
                 Violation::GitBroken { code, path } => format!(
                     "{}, {}: {}",
@@ -343,6 +344,7 @@ fn get_violations() -> Vec<Violation> {
                                         violations.push(Violation::GitNotSynced {
                                             count,
                                             repo: repo_path.clone(),
+                                            module: p,
                                         });
                                     }
                                     if repo.remotes().unwrap().is_empty() {
