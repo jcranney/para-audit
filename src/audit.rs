@@ -20,9 +20,9 @@ enum Violation {
     DuplicateModules(PathBuf, PathBuf),
     TooManyFiles { module: PathBuf, filecount: u64 },
     NoTags(PathBuf),
-    GitNotSynced { module: PathBuf, count: usize, repo: PathBuf },
+    GitNotSynced { module: String, count: usize, repo: PathBuf },
     GitBroken { code: String, path: PathBuf },
-    GitNameInvalid { module: PathBuf, name: String },
+    GitNameInvalid { module: String, name: String },
     GitNoRemote { repo: PathBuf },
     GitBrokenSymlink(PathBuf),
 }
@@ -156,8 +156,8 @@ impl std::fmt::Display for Violation {
                     "{}, {}: {}, {}",
                     "git not synced".red(),
                     format!("{} files", count).red().italic(),
+                    module,
                     repo.display(),
-                    module.display(),
                 ),
                 Violation::GitBroken { code, path } => format!(
                     "{}, {}: {}",
@@ -166,7 +166,7 @@ impl std::fmt::Display for Violation {
                     path.display()
                 ),
                 Violation::GitNameInvalid { module, name } =>
-                    format!("{}, {}: {}", "invalid git".red(), name, module.display()),
+                    format!("{}, {}: {}", "invalid git".red(), module, name),
                 Violation::GitNoRemote { repo } =>
                     format!("{}: {}", "no remote repo".red(), repo.display()),
                 Violation::GitBrokenSymlink(path_buf) =>
@@ -344,7 +344,7 @@ fn get_violations() -> Vec<Violation> {
                                         violations.push(Violation::GitNotSynced {
                                             count,
                                             repo: repo_path.clone(),
-                                            module: p,
+                                            module: p.to_str().unwrap().to_string(),
                                         });
                                     }
                                     if repo.remotes().unwrap().is_empty() {
@@ -372,7 +372,7 @@ fn get_violations() -> Vec<Violation> {
                     }
                     None => {
                         violations.push(Violation::GitNameInvalid {
-                            module: p.to_path_buf(),
+                            module: p.to_str().unwrap().to_string(),
                             name: git.to_owned(),
                         });
                     }
