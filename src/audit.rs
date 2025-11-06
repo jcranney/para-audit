@@ -1,6 +1,8 @@
 use colored::Colorize;
 use git2::{Repository, Status};
 use regex::Regex;
+use std::fs;
+use std::io::Read;
 use std::{fmt::Debug, path::PathBuf};
 
 use std::collections::HashMap;
@@ -264,21 +266,20 @@ fn get_violations() -> Vec<Violation> {
         }
     }
 
-    let disallowed_files: Vec<String> = [
-        ".git",
-        ".svn",
-        "package-lock.json",
-        "node_modules",
-        "venv",
-        "build",
-        "target",
-        ".mypy_cache",
-        "__pycache__",
-        "tmp",
-    ]
-    .iter()
-    .map(|x| x.to_string())
-    .collect();
+    // so maybe there should be the option for providing a .paradisallow and/or
+    // .paraignore file? Let's just start with a .paradisallow and if a .paraignore
+    // makes sense then we can implement it.
+    
+    let mut disallowed_files: Vec<String> = vec![];
+    if let Ok(mut f) = fs::File::open(&home_path.join(".paradisallow")) {
+        let mut contents: String = "".to_string();
+        f.read_to_string(&mut contents).unwrap();
+        disallowed_files = contents.split('\n')
+        .into_iter()
+        .filter(|x| !x.is_empty())
+        .map(|x| x.to_string())
+        .collect();
+    }
 
     // for the next tests, we need to check every single file/directory
     visit_all(&home_path, &mut |pathbuf| {
