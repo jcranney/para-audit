@@ -446,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "para-audit"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "clap",
  "colored",
