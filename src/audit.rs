@@ -208,7 +208,7 @@ fn get_violations() -> Vec<Violation> {
 
     // Check home dir for extra files/directories
     for root_entry in home_path.read_dir().expect("failed to read dir").flatten() {
-        if root_paths.contains(&root_entry.path()) {
+        if root_paths.contains(&root_entry.path()) || root_entry.path() == home_path.join(".paradisallow"){
             continue;
         } else {
             violations.push(Violation::RootDirClutter(root_entry.path()));
@@ -269,7 +269,7 @@ fn get_violations() -> Vec<Violation> {
     // so maybe there should be the option for providing a .paradisallow and/or
     // .paraignore file? Let's just start with a .paradisallow and if a .paraignore
     // makes sense then we can implement it.
-    
+
     let mut disallowed_files: Vec<String> = vec![];
     if let Ok(mut f) = fs::File::open(&home_path.join(".paradisallow")) {
         let mut contents: String = "".to_string();
