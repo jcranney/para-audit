@@ -25,16 +25,16 @@ pub fn get_git_path() -> PathBuf {
 }
 
 pub fn get_root_paths() -> Vec<PathBuf> {
-    let home = get_home_path();
-    // Check home dir for extra files/directories
-    vec![
-        "projects",
-        "areas",
-        "resources",
-        "archive",
-    ].into_iter()
-    .map(|name| home.join(name))
-    .collect()
+    let mut root_paths = vec![];
+    for entry in get_home_path().read_dir().expect("failed to read home dir") {
+        if let Ok(entry) = entry {
+            let filetype = entry.file_type().expect("failed to extract file type");
+            if filetype.is_dir() {
+                root_paths.push(entry.path());
+            }
+        }
+    }
+    root_paths
 }
 
 pub fn get_module_paths() -> Vec<PathBuf> {

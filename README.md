@@ -69,7 +69,7 @@ and then run it with:
 para --help
 ```
 You are required to define the following two environment variables:
- - `PARA_HOME`, this should point to the root directory where you can find the 4 top level folders (`projects`,`areas`,`resources`,`archive`).
+ - `PARA_HOME`, this should point to the root directory where you can find the top level folders (e.g., `projects`,`areas`,`resources`,`archive`).
  - `PARA_GIT`, this should point to a folder where you would like your `git` repositories stored. In my case, I don't like synchronising my git repos to the cloud, so I usually have this set to my user `Downloads` folder, but equally appropriate would be a `$HOME/git` directory (for example).
 
 For example, in most of my machines I use:
