@@ -1,7 +1,7 @@
 [package]
 name = "para-audit"
 version = "0.1.15"
-edition = "2021"
+edition = "2024"
 description = "A simple CLT for supervising/interfacing with a storage convention based on Tiago Forte's Second Brain - PARA principle."
 readme = "README.md"
 repository = "https://github.com/jcranney/para-audit"
