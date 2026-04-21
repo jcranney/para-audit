@@ -87,18 +87,18 @@ fn init_git(git: &str, module: &Path) -> Result<(), String> {
     let original = get_git_path().join(name);
     if !original.exists() {
         // doesn't exist, clone it:
-        if let Ok(status) = Command::new("git")
+        match Command::new("git")
             .arg("clone")
             .arg(git)
             .arg(&original)
             .status()
-        {
+        { Ok(status) => {
             if !status.success() {
                 return Err("git clone failed".to_string());
             }
-        } else {
+        } _ => {
             return Err("failed to start git".to_string());
-        }
+        }}
     }
     // now there is a correctly named directory in the downlaods folder,
     // hopefully the git repo but if it's not then that's fine, whatever.
