@@ -108,7 +108,7 @@ fn init_git(git: &str, module: &Path) -> Result<(), String> {
     if let Err(e) = std::os::unix::fs::symlink(original, module.join(name)) {
         return Err(format!(
             "{}, cannot create symbolic link for cloned repo.",
-            e.to_string()
+            e
         ));
     }
 

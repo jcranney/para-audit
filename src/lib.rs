@@ -26,12 +26,10 @@ pub fn get_git_path() -> PathBuf {
 
 pub fn get_root_paths() -> Vec<PathBuf> {
     let mut root_paths = vec![];
-    for entry in get_home_path().read_dir().expect("failed to read home dir") {
-        if let Ok(entry) = entry {
-            let filetype = entry.file_type().expect("failed to extract file type");
-            if filetype.is_dir() {
-                root_paths.push(entry.path());
-            }
+    for entry in get_home_path().read_dir().expect("failed to read home dir").flatten() {
+        let filetype = entry.file_type().expect("failed to extract file type");
+        if filetype.is_dir() {
+            root_paths.push(entry.path());
         }
     }
     root_paths

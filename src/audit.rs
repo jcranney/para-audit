@@ -271,11 +271,10 @@ fn get_violations() -> Vec<Violation> {
     // makes sense then we can implement it.
 
     let mut disallowed_files: Vec<String> = vec![];
-    if let Ok(mut f) = fs::File::open(&home_path.join(".paradisallow")) {
+    if let Ok(mut f) = fs::File::open(home_path.join(".paradisallow")) {
         let mut contents: String = "".to_string();
         f.read_to_string(&mut contents).unwrap();
         disallowed_files = contents.split('\n')
-        .into_iter()
         .filter(|x| !x.is_empty())
         .map(|x| x.to_string())
         .collect();
