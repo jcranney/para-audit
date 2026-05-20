@@ -10,10 +10,14 @@ keywords = ["cli","clt","para","second-brain"]
 categories = ["command-line-utilities"]
 
 [dependencies]
+anyhow = "1.0.102"
 clap = { version = "4.5.55", features = ["derive"] }
 colored = "3.1.1"
 git2 = "0.20.3"
 glob = "0.3.3"
 regex = "1.12.2"
+serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34-deprecated"
 strsim = "0.11.1"
+thiserror = "2.0.18"
+yaml_serde = "0.10.4"

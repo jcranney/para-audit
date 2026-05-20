@@ -1,49 +1,84 @@
-use std::env;
-use std::path::{Path,PathBuf};
 use colored::Colorize;
 use colored::CustomColor;
+use std::env;
 use std::fs;
+use std::path::{Path, PathBuf};
 pub mod audit;
-pub mod search;
+pub mod config;
 pub mod launch;
 pub mod layout;
+pub mod search;
+use anyhow::Result;
+use thiserror::Error;
 
-#[must_use]
-pub fn get_home_path() -> PathBuf {
-    PathBuf::from(
-        &env::var("PARA_HOME")
-        .expect("PARA_HOME environment variable not defined")
-    )
+#[derive(Error, Debug)]
+enum ParaError {
+    #[error("{0} environment variable not set")]
+    EnvVariableNotFound(String),
+    #[error("cannot create path for config, set PARA_CONFIG manually")]
+    CannotCreateConfigPath,
+}
+
+fn get_env_path(envvar: &str) -> Result<PathBuf> {
+    Ok(PathBuf::from(&env::var(envvar).map_err(|_| {
+        ParaError::EnvVariableNotFound(envvar.to_string())
+    })?))
 }
 
 #[must_use]
-pub fn get_git_path() -> PathBuf {
-    PathBuf::from(
-        &env::var("PARA_GIT")
-        .expect("PARA_GIT environment variable not defined")
-    )
+pub fn get_home_path() -> Result<PathBuf> {
+    get_env_path("PARA_HOME")
 }
 
-pub fn get_root_paths() -> Vec<PathBuf> {
+#[must_use]
+pub fn get_git_path() -> Result<PathBuf> {
+    get_env_path("PARA_GIT")
+}
+
+#[must_use]
+pub fn get_config_path() -> Result<PathBuf> {
+    if let Ok(path) = get_env_path("PARA_CONFIG") {
+        return Ok(path);
+    }
+    if let Some(mut path) = std::env::home_dir() {
+        path = path.join(".config").join("para-audit");
+        std::fs::create_dir_all(&path)?;
+        path = path.join("config.yaml");
+        return Ok(path);
+    }
+    Err(ParaError::CannotCreateConfigPath)?
+}
+
+pub fn get_root_paths() -> Result<Vec<PathBuf>> {
     let mut root_paths = vec![];
-    for entry in get_home_path().read_dir().expect("failed to read home dir").flatten() {
+    for entry in get_home_path()?
+        .read_dir()
+        .expect("failed to read home dir")
+        .flatten()
+    {
         let filetype = entry.file_type().expect("failed to extract file type");
         if filetype.is_dir() {
             root_paths.push(entry.path());
         }
     }
-    root_paths
+    Ok(root_paths)
 }
 
-pub fn get_module_paths() -> Vec<PathBuf> {
+pub fn get_module_paths() -> Result<Vec<PathBuf>> {
     // Check each top level dir to see if it only contains folders (no files)
-    let root_paths = get_root_paths();
-    root_paths.iter().flat_map(|root_path|
-        root_path.read_dir().expect("failed to read root dirs")
-        .map(|mod_entry| mod_entry.unwrap().path())
-        .collect::<Vec<PathBuf>>()
-    ).filter(|module| module.is_dir()).collect()
-}   
+    let root_paths = get_root_paths()?;
+    Ok(root_paths
+        .iter()
+        .flat_map(|root_path| {
+            root_path
+                .read_dir()
+                .expect("failed to read root dirs")
+                .map(|mod_entry| mod_entry.unwrap().path())
+                .collect::<Vec<PathBuf>>()
+        })
+        .filter(|module| module.is_dir())
+        .collect())
+}
 
 pub fn visit_all(path: &PathBuf, cb: &mut dyn FnMut(&PathBuf)) {
     if path.is_dir() && !path.is_symlink() {
@@ -67,17 +102,42 @@ pub fn print_modules(modules: Vec<PathBuf>, colorised: bool) {
         if colorised {
             println!(
                 "{}/{}/{}",
-                module.parent().unwrap()
-                .parent().unwrap()
-                .display().to_string()
-                .custom_color(CustomColor{r:100,g:100,b:100}),
-                module.parent().unwrap()
-                .file_name().unwrap()
-                .to_str().unwrap().to_string()
-                .custom_color(CustomColor{r:100,g:140,b:100}),
-                module.file_name().unwrap()
-                .to_str().unwrap().to_string()
-                .custom_color(CustomColor{r:100,g:255,b:100}),
+                module
+                    .parent()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .display()
+                    .to_string()
+                    .custom_color(CustomColor {
+                        r: 100,
+                        g: 100,
+                        b: 100
+                    }),
+                module
+                    .parent()
+                    .unwrap()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+                    .custom_color(CustomColor {
+                        r: 100,
+                        g: 140,
+                        b: 100
+                    }),
+                module
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+                    .custom_color(CustomColor {
+                        r: 100,
+                        g: 255,
+                        b: 100
+                    }),
             );
         } else {
             println!("{}", module.display());
@@ -90,14 +150,11 @@ pub fn print_count(item: &str, count: u32) {
 }
 
 #[must_use]
-pub fn read_yaml(
-    module: &Path,
-) -> Option<serde_yaml::Value> {
+pub fn read_yaml(module: &Path) -> Result<Option<serde_yaml::Value>> {
     // open module/para.yaml file if it exists
     if let Ok(f) = fs::File::open(module.join("para.yaml")) {
-        if let Ok(file) = serde_yaml::from_reader(f) {
-            return Some(file)
-        }
+        let file = serde_yaml::from_reader(f)?;
+        return Ok(Some(file));
     }
-    None
+    Ok(None)
 }

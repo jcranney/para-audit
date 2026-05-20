@@ -1,6 +1,7 @@
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
+use para_audit::{audit, config, launch, layout, search};
 use std::path::PathBuf;
-use para_audit::{audit, launch, layout, search};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -64,123 +65,127 @@ enum Commands {
     },
     /// list all tags
     Tags {
-        /// hide tags with less than count occurances 
+        /// hide tags with less than count occurances
         count: Option<u32>,
     },
     /// list fixes to problems identified by audit
-    Fix {
-        level: Option<u32>,
-    },
+    Fix { level: Option<u32> },
 }
 
-fn main() -> Result<(), String> {
+fn main() -> Result<()> {
+    // need a philosophy around config files. I'm thinking:
+    //   if PARA_CONFIG env variable exists, then this is the file path.
+    //   else $HOME/.config/para-audit/config.yaml is the path.
+    //  
+    //   if file exists at path, then use it as is,
+    //   otherwise create it and populate with defaults
+    let config_path = para_audit::get_config_path()?;
+    let config = match config::Config::read_yaml(&config_path) {
+        Ok(config) => config,
+        Err(_) => {
+            // coulnd't read a yaml file at the defined config path,
+            // create a default one and try to save it there instead.
+            let config = config::Config::default();
+            config.write_yaml(&config_path)?;
+            config
+        },
+    };
+    // config.write_yaml("para_config.yaml")?;    
+    
     let args = Args::parse();
     match &args.command {
-        Commands::Audit { level } => audit::audit(level.unwrap_or(10)),
+        Commands::Audit { level } => audit::audit(level.unwrap_or(10), &config)?,
         Commands::Search { search_string } => {
-            let modules = search::search_modules(search_string, 0.8);
+            let modules = search::search_modules(search_string, 0.8)?;
             para_audit::print_modules(modules, true);
-        },
-        Commands::List { root } => {
-            match root {
-                Some(root) => match &root[..] {
-                    "all" | "a" => para_audit::print_modules(
-                        para_audit::get_module_paths(),
-                        true,
-                    ),
-                    root => para_audit::print_modules(
-                        search::list_rooted_modules(root)?,
-                        true,
-                    ),
-                }
-                None => para_audit::print_modules(
-                    search::list_rooted_modules("projects")?,
-                    true,
-                ),
-            }
+        }
+        Commands::List { root } => match root {
+            Some(root) => match &root[..] {
+                "all" | "a" => para_audit::print_modules(para_audit::get_module_paths()?, true),
+                root => para_audit::print_modules(search::list_rooted_modules(root)?, true),
+            },
+            None => para_audit::print_modules(search::list_rooted_modules("projects")?, true),
         },
         Commands::Open { module } => {
-            let module_to_open = match search::find_module(module) {
-                Some(m) => {
-                    m
-                },
+            let module_to_open = match search::find_module(module)? {
+                Some(m) => m,
                 None => {
-                    let potential_modules = search::search_modules(module, 0.8);
+                    let potential_modules = search::search_modules(module, 0.8)?;
                     match potential_modules.len() {
                         1 => potential_modules[0].clone(),
                         x if x > 1 => {
                             para_audit::eprint_modules(potential_modules);
-                            return Err("ambiguous module name".to_string());
-                        },
+                            return Err(anyhow!("ambiguous module name"));
+                        }
                         _ => {
-                            return Err("can't find a match".to_string());
+                            return Err(anyhow!("can't find a match"));
                         }
                     }
                 }
             };
             launch::open(&module_to_open)?;
-        },
+        }
         Commands::Move { module, destroot } => {
-            let module = match search::find_module(module) {
+            let module = match search::find_module(module)? {
                 Some(m) => m,
                 None => {
-                    let potential_modules = search::search_modules(module, 1.0);
+                    let potential_modules = search::search_modules(module, 1.0)?;
                     match potential_modules.len() {
                         1 => potential_modules[0].clone(),
                         x if x > 1 => {
                             para_audit::eprint_modules(potential_modules);
-                            return Err("ambiguous module name".to_string());
-                        },
-                        _ => {return Err("can't find a match".to_string());}
+                            return Err(anyhow!("ambiguous module name"));
+                        }
+                        _ => {
+                            return Err(anyhow!("can't find a match"));
+                        }
                     }
                 }
             };
-            if let Some(root) = search::find_root(destroot) {
+            if let Some(root) = search::find_root(destroot)? {
                 layout::mv(module, root)?;
             } else {
-                return Err("invalid destination name".to_string());
+                return Err(anyhow!("invalid destination name"));
             }
-        },
-        Commands::Stats { min_count } => audit::stats(min_count.unwrap_or(100)),
+        }
+        Commands::Stats { min_count } => audit::stats(min_count.unwrap_or(100))?,
         Commands::New { name, root } => {
             let mut module_path: PathBuf;
             if let Some(root) = root {
-                if let Some(path) = search::find_root(root) {
+                if let Some(path) = search::find_root(root)? {
                     module_path = path;
                 } else {
-                    return Err(format!("invalid root name - {}", root))
+                    return Err(anyhow!("invalid root name - {}", root));
                 }
             } else {
-                module_path = match search::find_root("projects") {
+                module_path = match search::find_root("projects")? {
                     Some(p) => p,
                     None => {
-                        return Err("can't find `projects` folder, something very wrong".to_string());
+                        return Err(anyhow!(
+                            "can't find `projects` folder, something very wrong"
+                        ));
                     }
                 }
             }
             module_path = module_path.join(name);
             layout::new(module_path)?;
-
-        },
+        }
         Commands::Note { module } => {
-            if let Some(module) = search::find_module(module) {
-                launch::edit_note(module.join("README.md"))?;   
+            if let Some(module) = search::find_module(module)? {
+                launch::edit_note(module.join("README.md"))?;
             } else {
-                return Err("can't find module".to_string());
+                return Err(anyhow!("can't find module"));
             }
-        },
-        Commands::Tags {count} => {
+        }
+        Commands::Tags { count } => {
             let count = count.unwrap_or(5);
             let mut tags = search::get_all_tags()?;
-            tags.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
-            tags
-            .into_iter()
-            .filter(|(_,y)| y >= &count)
-            .for_each(|(x,y)|
-                para_audit::print_count(&x[..], y)
-            );
-        },
-        Commands::Fix { level } => audit::propose_fixes(level.unwrap_or(10)),
+            tags.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            tags.into_iter()
+                .filter(|(_, y)| y >= &count)
+                .for_each(|(x, y)| para_audit::print_count(&x[..], y));
+        }
+        Commands::Fix { level } => audit::propose_fixes(level.unwrap_or(10), &config)?,
     }
     Ok(())
 }

@@ -1,14 +1,14 @@
 use colored::Colorize;
 use git2::{Repository, Status};
 use regex::Regex;
-use std::fs;
-use std::io::Read;
 use std::{fmt::Debug, path::PathBuf};
 
 use std::collections::HashMap;
+use anyhow::Result;
 
 use crate::{
-    get_home_path, get_module_paths, get_root_paths, print_count, read_yaml, search, visit_all,
+    config, get_home_path, get_module_paths, get_root_paths, print_count, read_yaml, search,
+    visit_all,
 };
 
 #[derive(Debug)]
@@ -16,16 +16,34 @@ enum Violation {
     RootDirClutter(PathBuf),
     ModDirClutter(PathBuf),
     ModDirName(PathBuf),
-    ModRequiredFileMissing { file: String, module: PathBuf },
+    ModRequiredFileMissing {
+        file: String,
+        module: PathBuf,
+    },
     DisallowedFile(PathBuf),
     EmptyModule(PathBuf),
     DuplicateModules(PathBuf, PathBuf),
-    TooManyFiles { module: PathBuf, filecount: u64 },
+    TooManyFiles {
+        module: PathBuf,
+        filecount: u64,
+    },
     NoTags(PathBuf),
-    GitNotSynced { module: String, count: usize, repo: PathBuf },
-    GitBroken { code: String, path: PathBuf },
-    GitNameInvalid { module: String, name: String },
-    GitNoRemote { repo: PathBuf },
+    GitNotSynced {
+        module: String,
+        count: usize,
+        repo: PathBuf,
+    },
+    GitBroken {
+        code: String,
+        path: PathBuf,
+    },
+    GitNameInvalid {
+        module: String,
+        name: String,
+    },
+    GitNoRemote {
+        repo: PathBuf,
+    },
     GitBrokenSymlink(PathBuf),
 }
 
@@ -58,6 +76,7 @@ impl std::fmt::Display for Fix {
             Fix::MoveFile(p) => {
                 let source = p.clone();
                 let destination = search::find_root("projects")
+                    .unwrap() // this is bad
                     .unwrap()
                     .join("CLUTTER")
                     .join(p.file_name().unwrap());
@@ -109,13 +128,14 @@ impl std::fmt::Display for Fix {
     }
 }
 
-pub fn propose_fixes(level: u32) {
-    let violations = get_violations();
+pub fn propose_fixes(level: u32, config: &config::Config) -> Result<()> {
+    let violations = get_violations(config)?;
     for v in violations {
         if v.level() <= level {
             print!("{}", v.fix());
         }
     }
+    Ok(())
 }
 
 impl std::fmt::Display for Violation {
@@ -154,7 +174,11 @@ impl std::fmt::Display for Violation {
                 ),
                 Violation::NoTags(yamlfile) =>
                     format!("{}: {}", "no tags".red(), yamlfile.display()),
-                Violation::GitNotSynced {repo, count, module } => format!(
+                Violation::GitNotSynced {
+                    repo,
+                    count,
+                    module,
+                } => format!(
                     "{}, {}: {}, {}",
                     "git not synced".red(),
                     format!("{} files", count).red().italic(),
@@ -200,15 +224,17 @@ impl Violation {
     }
 }
 
-fn get_violations() -> Vec<Violation> {
+fn get_violations(config: &config::Config) -> Result<Vec<Violation>> {
     let mut violations: Vec<Violation> = vec![];
 
-    let home_path = get_home_path();
-    let root_paths = get_root_paths();
+    let home_path = get_home_path()?;
+    let root_paths = get_root_paths()?;
 
     // Check home dir for extra files/directories
     for root_entry in home_path.read_dir().expect("failed to read dir").flatten() {
-        if root_paths.contains(&root_entry.path()) || root_entry.path() == home_path.join(".paradisallow"){
+        if root_paths.contains(&root_entry.path())
+            || root_entry.path() == home_path.join(".paradisallow")
+        {
             continue;
         } else {
             violations.push(Violation::RootDirClutter(root_entry.path()));
@@ -224,7 +250,7 @@ fn get_violations() -> Vec<Violation> {
         }
     }
 
-    let module_paths = get_module_paths();
+    let module_paths = get_module_paths()?;
     let re = Regex::new("[-, ,\\.,A-Z]").unwrap();
     // this is a list of all module directories:
     module_paths.iter().for_each(|mod_entry| {
@@ -260,7 +286,7 @@ fn get_violations() -> Vec<Violation> {
                 });
             }
         }
-        let tags = search::get_module_tags(module);
+        let tags = search::get_module_tags(module)?;
         if tags.is_empty() {
             violations.push(Violation::NoTags(module.join("para.yaml")))
         }
@@ -271,13 +297,11 @@ fn get_violations() -> Vec<Violation> {
     // makes sense then we can implement it.
 
     let mut disallowed_files: Vec<String> = vec![];
-    if let Ok(mut f) = fs::File::open(home_path.join(".paradisallow")) {
-        let mut contents: String = "".to_string();
-        f.read_to_string(&mut contents).unwrap();
-        disallowed_files = contents.split('\n')
-        .filter(|x| !x.is_empty())
-        .map(|x| x.to_string())
-        .collect();
+    // disallowed files are the union of the files listed in ".paradisallow"
+    // and in the para config file.
+
+    if let Some(files) = &config.disallowed_files {
+        disallowed_files.append(&mut files.clone());
     }
 
     // for the next tests, we need to check every single file/directory
@@ -326,66 +350,65 @@ fn get_violations() -> Vec<Violation> {
 
     // check the status of all git repos
     module_paths.iter().for_each(|p| {
-        if let Some(yaml) = read_yaml(p) {
-            if let Some(git) = yaml["git"].as_str() {
-                match git.split('/').next_back() {
-                    Some(mut n) => {
-                        n = n.trim_end_matches(".git");
-                        let repo_path = p.join(n);
-                        if repo_path.is_dir() {
-                            match Repository::open(&repo_path) {
-                                Ok(repo) => {
-                                    let statuses = repo.statuses(None).unwrap();
-                                    let count: usize = statuses
-                                        .iter()
-                                        .filter(|s| s.status() != Status::IGNORED)
-                                        .count();
-                                    if count > 0 {
-                                        violations.push(Violation::GitNotSynced {
-                                            count,
-                                            repo: repo_path.clone(),
-                                            module: p.to_str().unwrap().to_string(),
-                                        });
-                                    }
-                                    if repo.remotes().unwrap().is_empty() {
-                                        violations.push(Violation::GitNoRemote { repo: repo_path });
-                                    }
-                                }
-                                Err(e) => {
-                                    violations.push(Violation::GitBroken {
-                                        code: format!("{:?}", e.code()),
-                                        path: repo_path,
+        if let Some(yaml) = read_yaml(p).unwrap() // this is bad
+            && let Some(git) = yaml["git"].as_str()
+        {
+            match git.split('/').next_back() {
+                Some(mut n) => {
+                    n = n.trim_end_matches(".git");
+                    let repo_path = p.join(n);
+                    if repo_path.is_dir() {
+                        match Repository::open(&repo_path) {
+                            Ok(repo) => {
+                                let statuses = repo.statuses(None).unwrap();
+                                let count: usize = statuses
+                                    .iter()
+                                    .filter(|s| s.status() != Status::IGNORED)
+                                    .count();
+                                if count > 0 {
+                                    violations.push(Violation::GitNotSynced {
+                                        count,
+                                        repo: repo_path.clone(),
+                                        module: p.to_str().unwrap().to_string(),
                                     });
                                 }
-                            };
-                        } else {
-                            // it's not a directory
-                            if !repo_path.is_file() {
-                                // and it's not a file
-                                if repo_path.is_symlink() {
-                                    // but it is still a symlink
-                                    // then it must be a broken symlink, so it should be deleted
-                                    violations.push(Violation::GitBrokenSymlink(repo_path));
+                                if repo.remotes().unwrap().is_empty() {
+                                    violations.push(Violation::GitNoRemote { repo: repo_path });
                                 }
                             }
+                            Err(e) => {
+                                violations.push(Violation::GitBroken {
+                                    code: format!("{:?}", e.code()),
+                                    path: repo_path,
+                                });
+                            }
+                        };
+                    } else {
+                        // it's not a directory
+                        if !repo_path.is_file()  // and it's not a file
+                            && repo_path.is_symlink()
+                        // but it is still a symlink
+                        {
+                            // then it must be a broken symlink, so it should be deleted
+                            violations.push(Violation::GitBrokenSymlink(repo_path));
                         }
                     }
-                    None => {
-                        violations.push(Violation::GitNameInvalid {
-                            module: p.to_str().unwrap().to_string(),
-                            name: git.to_owned(),
-                        });
-                    }
-                };
-            }
+                }
+                None => {
+                    violations.push(Violation::GitNameInvalid {
+                        module: p.to_str().unwrap().to_string(),
+                        name: git.to_owned(),
+                    });
+                }
+            };
         }
     });
 
-    violations
+    Ok(violations)
 }
 
-pub fn audit(level: u32) {
-    let violations = get_violations();
+pub fn audit(level: u32, config: &config::Config) -> Result<()> {
+    let violations = get_violations(config)?;
 
     // print results
     for v in &violations {
@@ -402,17 +425,19 @@ pub fn audit(level: u32) {
             _ => format!("{} violations", "zero".green()),
         }
     );
+
+    Ok(())
 }
 
-pub fn stats(min_count: u32) {
+pub fn stats(min_count: u32) -> Result<()> {
     let mut filecount: u32 = 0;
-    visit_all(&get_home_path(), &mut |_| {
+    visit_all(&get_home_path()?, &mut |_| {
         filecount += 1;
     });
     print_count("total files", filecount);
 
     let mut ext_count: HashMap<String, u32> = HashMap::new();
-    visit_all(&get_home_path(), &mut |path: &PathBuf| {
+    visit_all(&get_home_path()?, &mut |path: &PathBuf| {
         if path.is_file() {
             ext_count
                 .entry(match path.extension().map(|x| x.to_str().unwrap()) {
@@ -432,4 +457,6 @@ pub fn stats(min_count: u32) {
     results
         .into_iter()
         .for_each(|(a, b)| print_count(&a[..], b));
+
+    Ok(())
 }

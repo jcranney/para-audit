@@ -3,10 +3,11 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+use anyhow::{Result, anyhow};
 
 use crate::{get_git_path, read_yaml};
 
-pub fn open(module: &PathBuf) -> Result<(), String> {
+pub fn open(module: &PathBuf) -> Result<()> {
     // print module path to std for "goto"/"cd" like command
     eprintln!(
         "{}",
@@ -15,7 +16,7 @@ pub fn open(module: &PathBuf) -> Result<(), String> {
             .italic()
     );
 
-    if let Some(yaml) = read_yaml(module) {
+    if let Some(yaml) = read_yaml(module)? {
         let cmd = yaml["open"].as_sequence().map(|s| {
             s.iter()
                 .map(|x| x.as_str().map(|s| s.to_string()))
@@ -27,19 +28,19 @@ pub fn open(module: &PathBuf) -> Result<(), String> {
             if let Some(root_cmd) = &cmd[0] {
                 command = Command::new(root_cmd);
             } else {
-                return Err("couldn't parse command argument".to_string());
+                return Err(anyhow!("couldn't parse command argument"));
             }
             for arg in cmd[1..].iter() {
                 if let Some(arg) = arg {
                     command.arg(arg);
                 } else {
-                    return Err("failed to parse command arguments in para.yaml".to_string());
+                    return Err(anyhow!("failed to parse command arguments in para.yaml"));
                 }
             }
             command.current_dir(module);
             command
                 .status()
-                .or(Err("failed to spawn `open` command from para.yaml"))?;
+                .or(Err(anyhow!("failed to spawn `open` command from para.yaml")))?;
         }
         if let Some(git) = yaml["git"].as_str() {
             init_git(git, module)?;
@@ -48,24 +49,23 @@ pub fn open(module: &PathBuf) -> Result<(), String> {
 
     Command::new("zsh")
         .current_dir(module)
-        .status()
-        .or(Err("couldn't start zsh"))?;
+        .status()?;
     Ok(())
 }
 
-pub fn edit_note(note: PathBuf) -> Result<(), String> {
+pub fn edit_note(note: PathBuf) -> Result<()> {
     Command::new("code")
         .arg(note)
         .status()
-        .or(Err("Couldn't start vim"))?;
+        .or(Err(anyhow!("Couldn't start vim")))?;
     Ok(())
 }
 
-fn init_git(git: &str, module: &Path) -> Result<(), String> {
+fn init_git(git: &str, module: &Path) -> Result<()> {
     // get git repo name (will be dir name)
     let name = match git.split('/').next_back() {
         Some(n) => n.trim_end_matches(".git"),
-        None => return Err("para.yaml git url invalid".to_string()),
+        None => return Err(anyhow!("para.yaml git url invalid")),
     };
 
     // git url is defined, confirm that no dir with that name exists yet
@@ -76,41 +76,29 @@ fn init_git(git: &str, module: &Path) -> Result<(), String> {
         // file either doesn't exist, or is a broken symlink
         if module.join(name).is_symlink() {
             // must be a broken symlink, we can delete it and move on
-            if let Err(e) = std::fs::remove_file(module.join(name)) {
-                // error, do something
-                return Err(e.to_string());
-            }
+            std::fs::remove_file(module.join(name))?;
         }
     }
 
     // check if repo in downloads, if not, get it
-    let original = get_git_path().join(name);
+    let original = get_git_path()?.join(name);
     if !original.exists() {
         // doesn't exist, clone it:
-        match Command::new("git")
+        let status = Command::new("git")
             .arg("clone")
             .arg(git)
             .arg(&original)
-            .status()
-        { Ok(status) => {
-            if !status.success() {
-                return Err("git clone failed".to_string());
-            }
-        } _ => {
-            return Err("failed to start git".to_string());
-        }}
+            .status()?;
+        if !status.success() {
+            return Err(anyhow!("git clone failed"));
+        }
     }
     // now there is a correctly named directory in the downlaods folder,
     // hopefully the git repo but if it's not then that's fine, whatever.
 
     
     // make symbolic link here linking to cloned repo
-    if let Err(e) = std::os::unix::fs::symlink(original, module.join(name)) {
-        return Err(format!(
-            "{}, cannot create symbolic link for cloned repo.",
-            e
-        ));
-    }
+    std::os::unix::fs::symlink(original, module.join(name))?;
 
     // done!
     Ok(())
