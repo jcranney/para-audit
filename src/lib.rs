@@ -25,17 +25,14 @@ fn get_env_path(envvar: &str) -> Result<PathBuf> {
     })?))
 }
 
-#[must_use]
 pub fn get_home_path() -> Result<PathBuf> {
     get_env_path("PARA_HOME")
 }
 
-#[must_use]
 pub fn get_git_path() -> Result<PathBuf> {
     get_env_path("PARA_GIT")
 }
 
-#[must_use]
 pub fn get_config_path() -> Result<PathBuf> {
     if let Ok(path) = get_env_path("PARA_CONFIG") {
         return Ok(path);
@@ -149,11 +146,10 @@ pub fn print_count(item: &str, count: u32) {
     println!("{:5} {}", count.to_string().yellow(), item.green());
 }
 
-#[must_use]
-pub fn read_yaml(module: &Path) -> Result<Option<serde_yaml::Value>> {
+pub fn read_yaml(module: &Path) -> Result<Option<yaml_serde::Value>> {
     // open module/para.yaml file if it exists
     if let Ok(f) = fs::File::open(module.join("para.yaml")) {
-        let file = serde_yaml::from_reader(f)?;
+        let file = yaml_serde::from_reader(f)?;
         return Ok(Some(file));
     }
     Ok(None)
