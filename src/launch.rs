@@ -1,9 +1,9 @@
+use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use anyhow::{Result, anyhow};
 
 use crate::{get_git_path, read_yaml};
 
@@ -16,40 +16,37 @@ pub fn open(module: &PathBuf) -> Result<()> {
             .italic()
     );
 
-    if let Some(yaml) = read_yaml(module)? {
-        let cmd = yaml["open"].as_sequence().map(|s| {
-            s.iter()
-                .map(|x| x.as_str().map(|s| s.to_string()))
-                .collect::<Vec<Option<String>>>()
-        });
-        if let Some(cmd) = cmd {
-            // command sequence exists
-            let mut command: Command;
-            if let Some(root_cmd) = &cmd[0] {
-                command = Command::new(root_cmd);
-            } else {
-                return Err(anyhow!("couldn't parse command argument"));
-            }
-            for arg in cmd[1..].iter() {
-                if let Some(arg) = arg {
+    match read_yaml(module) {
+        Ok(para_yaml) => {
+            if let Some(cmd) = para_yaml.open
+                && !cmd.is_empty()
+            {
+                // command sequence exists
+                let mut command = Command::new(cmd.first().unwrap());
+                for arg in cmd[1..].iter() {
                     command.arg(arg);
-                } else {
-                    return Err(anyhow!("failed to parse command arguments in para.yaml"));
+                }
+                command.current_dir(module);
+                command.status().or(Err(anyhow!(
+                    "failed to spawn `open` command from para.yaml"
+                )))?;
+            }
+
+            if let Some(gits) = para_yaml.gits {
+                for git in gits {
+                    init_git(&git, module)?;
                 }
             }
-            command.current_dir(module);
-            command
-                .status()
-                .or(Err(anyhow!("failed to spawn `open` command from para.yaml")))?;
         }
-        if let Some(git) = yaml["git"].as_str() {
-            init_git(git, module)?;
+        Err(e) => {
+            eprintln!(
+                "{}",
+                format!("Error opening para.yaml: {}", e).green().italic()
+            );
         }
     }
 
-    Command::new("zsh")
-        .current_dir(module)
-        .status()?;
+    Command::new("zsh").current_dir(module).status()?;
     Ok(())
 }
 
@@ -96,7 +93,6 @@ fn init_git(git: &str, module: &Path) -> Result<()> {
     // now there is a correctly named directory in the downlaods folder,
     // hopefully the git repo but if it's not then that's fine, whatever.
 
-    
     // make symbolic link here linking to cloned repo
     std::os::unix::fs::symlink(original, module.join(name))?;
 

@@ -1,7 +1,13 @@
 use colored::Colorize;
 use colored::CustomColor;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::de;
 use std::env;
+use std::fmt;
 use std::fs;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 pub mod audit;
 pub mod config;
@@ -146,11 +152,45 @@ pub fn print_count(item: &str, count: u32) {
     println!("{:5} {}", count.to_string().yellow(), item.green());
 }
 
-pub fn read_yaml(module: &Path) -> Result<Option<yaml_serde::Value>> {
+pub fn read_yaml(module: &Path) -> Result<ParaYaml> {
     // open module/para.yaml file if it exists
-    if let Ok(f) = fs::File::open(module.join("para.yaml")) {
-        let file = yaml_serde::from_reader(f)?;
-        return Ok(Some(file));
+    let f = fs::File::open(module.join("para.yaml"))?;
+    Ok(yaml_serde::from_reader(f)?)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParaYaml {
+    #[serde(default, deserialize_with = "string_or_seq_string")]
+    pub gits: Option<Vec<String>>,
+    pub open: Option<Vec<String>>,
+    pub tags: Option<Vec<String>>,
+}
+
+fn string_or_seq_string<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+    where D: Deserializer<'de>
+{
+    struct StringOrVec(PhantomData<Option<Vec<String>>>);
+
+    impl<'de> de::Visitor<'de> for StringOrVec {
+        type Value = Option<Vec<String>>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("string or list of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where E: de::Error
+        {
+            Ok(Some(vec![value.to_owned()]))
+        }
+
+        fn visit_seq<S>(self, visitor: S) -> Result<Self::Value, S::Error>
+            where S: de::SeqAccess<'de>
+        {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(visitor))
+        }
     }
-    Ok(None)
+
+    deserializer.deserialize_any(StringOrVec(PhantomData))
 }

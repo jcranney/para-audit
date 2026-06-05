@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::{get_module_paths, get_root_paths, read_yaml};
 
@@ -81,39 +81,32 @@ pub fn list_rooted_modules(root: &str) -> Result<Vec<PathBuf>> {
 pub fn search_by_tag(tag: &str) -> Result<Vec<PathBuf>> {
     let mut modules: Vec<PathBuf> = vec![];
     for module in get_module_paths()? {
-        if let Some(yaml) = read_yaml(&module)?
-            && let Some(tags) = yaml["tags"].as_sequence()
-            && tags
-                .iter()
-                .filter_map(|x| x.as_str())
-                .collect::<Vec<&str>>()
-                .contains(&tag)
-        {
-            modules.push(module);
+        if let Ok(para_yaml) = read_yaml(&module) {
+            match para_yaml.tags {
+                Some(tags) => {
+                    for module_tag in tags.iter() {
+                        if module_tag.contains(tag) {
+                            modules.push(module);
+                            break;
+                        }
+                    }
+                }
+                None => continue,
+            }
         }
     }
     Ok(modules)
 }
 
-pub fn get_module_tags(module: &Path) -> Result<Vec<String>> {
-    let mut module_tags = vec![];
-    if let Some(yaml) = read_yaml(module)?
-        && let Some(tags) = yaml["tags"].as_sequence()
-    {
-        for tag in tags {
-            if let Some(t) = tag.as_str().map(|x| x.to_string()) {
-                module_tags.push(t)
-            }
-        }
-    }
-    Ok(module_tags)
-}
-
 pub fn get_all_tags() -> Result<Vec<(String, u32)>> {
     let mut tags_count: HashMap<String, u32> = HashMap::new();
     for module in &get_module_paths()? {
-        for tag in get_module_tags(module)? {
-            tags_count.entry(tag).and_modify(|c| *c += 1).or_insert(1);
+        if let Ok(para_yaml) = read_yaml(module)
+            && let Some(tags) = para_yaml.tags
+        {
+            for tag in tags {
+                tags_count.entry(tag).and_modify(|c| *c += 1).or_insert(1);
+            }
         }
     }
     Ok(tags_count.into_iter().collect::<Vec<(String, u32)>>())

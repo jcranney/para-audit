@@ -3,8 +3,8 @@ use git2::{Repository, Status};
 use regex::Regex;
 use std::{fmt::Debug, path::PathBuf};
 
-use std::collections::HashMap;
 use anyhow::Result;
+use std::collections::HashMap;
 
 use crate::{
     config, get_home_path, get_module_paths, get_root_paths, print_count, read_yaml, search,
@@ -28,6 +28,10 @@ enum Violation {
         filecount: u64,
     },
     NoTags(PathBuf),
+    BrokenParaYaml {
+        module: PathBuf,
+        error: String,
+    },
     GitNotSynced {
         module: String,
         count: usize,
@@ -65,6 +69,7 @@ impl Violation {
             Violation::DisallowedFile(p) | Violation::EmptyModule(p) => Fix::Delete(p),
             Violation::NoTags(p) => Fix::EditFile(p),
             Violation::GitBrokenSymlink(path) => Fix::Delete(path),
+            Violation::BrokenParaYaml { module, .. } => Fix::EditFile(module),
             _ => Fix::None,
         }
     }
@@ -197,6 +202,12 @@ impl std::fmt::Display for Violation {
                     format!("{}: {}", "no remote repo".red(), repo.display()),
                 Violation::GitBrokenSymlink(path_buf) =>
                     format!("{}: {}", "broken git symlink".red(), path_buf.display()),
+                Violation::BrokenParaYaml { module, error } => format!(
+                    "{} {}: {}",
+                    "para.yaml".red(),
+                    error.red(),
+                    module.display()
+                ),
             }
         )?;
         Ok(())
@@ -220,6 +231,7 @@ impl Violation {
             Violation::GitNameInvalid { .. } => 3,
             Violation::GitNoRemote { .. } => 3,
             Violation::GitBrokenSymlink(_) => 5,
+            Violation::BrokenParaYaml { .. } => 1,
         }
     }
 }
@@ -286,15 +298,19 @@ fn get_violations(config: &config::Config) -> Result<Vec<Violation>> {
                 });
             }
         }
-        let tags = search::get_module_tags(module)?;
-        if tags.is_empty() {
-            violations.push(Violation::NoTags(module.join("para.yaml")))
+        // empty tags is a violation, but an ill-formatted para.yaml file is
+        // a separate violation, checked for in the git-loop later.
+        if let Ok(para_yaml) = read_yaml(module) {
+            match para_yaml.tags {
+                Some(tags) => {
+                    if tags.is_empty() {
+                        violations.push(Violation::NoTags(module.join("para.yaml")))
+                    }
+                }
+                None => violations.push(Violation::NoTags(module.join("para.yaml"))),
+            }
         }
     }
-
-    // so maybe there should be the option for providing a .paradisallow and/or
-    // .paraignore file? Let's just start with a .paradisallow and if a .paraignore
-    // makes sense then we can implement it.
 
     let mut disallowed_files: Vec<String> = vec![];
     // disallowed files are the union of the files listed in ".paradisallow"
@@ -349,60 +365,70 @@ fn get_violations(config: &config::Config) -> Result<Vec<Violation>> {
         });
 
     // check the status of all git repos
-    module_paths.iter().for_each(|p| {
-        if let Some(yaml) = read_yaml(p).unwrap() // this is bad
-            && let Some(git) = yaml["git"].as_str()
-        {
-            match git.split('/').next_back() {
-                Some(mut n) => {
-                    n = n.trim_end_matches(".git");
-                    let repo_path = p.join(n);
-                    if repo_path.is_dir() {
-                        match Repository::open(&repo_path) {
-                            Ok(repo) => {
-                                let statuses = repo.statuses(None).unwrap();
-                                let count: usize = statuses
-                                    .iter()
-                                    .filter(|s| s.status() != Status::IGNORED)
-                                    .count();
-                                if count > 0 {
-                                    violations.push(Violation::GitNotSynced {
-                                        count,
-                                        repo: repo_path.clone(),
-                                        module: p.to_str().unwrap().to_string(),
-                                    });
-                                }
-                                if repo.remotes().unwrap().is_empty() {
-                                    violations.push(Violation::GitNoRemote { repo: repo_path });
+    for p in module_paths.iter() {
+        match read_yaml(p) {
+            Ok(para_yaml) => {
+                if let Some(gits) = para_yaml.gits {
+                    for git in gits {
+                        match git.split('/').next_back() {
+                            Some(mut n) => {
+                                n = n.trim_end_matches(".git");
+                                let repo_path = p.join(n);
+                                if repo_path.is_dir() {
+                                    match Repository::open(&repo_path) {
+                                        Ok(repo) => {
+                                            let statuses = repo.statuses(None).unwrap();
+                                            let count: usize = statuses
+                                                .iter()
+                                                .filter(|s| s.status() != Status::IGNORED)
+                                                .count();
+                                            if count > 0 {
+                                                violations.push(Violation::GitNotSynced {
+                                                    count,
+                                                    repo: repo_path.clone(),
+                                                    module: p.to_str().unwrap().to_string(),
+                                                });
+                                            }
+                                            if repo.remotes().unwrap().is_empty() {
+                                                violations.push(Violation::GitNoRemote {
+                                                    repo: repo_path,
+                                                });
+                                            }
+                                        }
+                                        Err(e) => {
+                                            violations.push(Violation::GitBroken {
+                                                code: format!("{:?}", e.code()),
+                                                path: repo_path,
+                                            });
+                                        }
+                                    };
+                                } else {
+                                    // it's not a directory
+                                    if !repo_path.is_file()  // and it's not a file
+                                    && repo_path.is_symlink()
+                                    // but it is still a symlink
+                                    {
+                                        // then it must be a broken symlink, so it should be deleted
+                                        violations.push(Violation::GitBrokenSymlink(repo_path));
+                                    }
                                 }
                             }
-                            Err(e) => {
-                                violations.push(Violation::GitBroken {
-                                    code: format!("{:?}", e.code()),
-                                    path: repo_path,
+                            None => {
+                                violations.push(Violation::GitNameInvalid {
+                                    module: p.to_str().unwrap().to_string(),
+                                    name: git.to_owned(),
                                 });
                             }
                         };
-                    } else {
-                        // it's not a directory
-                        if !repo_path.is_file()  // and it's not a file
-                            && repo_path.is_symlink()
-                        // but it is still a symlink
-                        {
-                            // then it must be a broken symlink, so it should be deleted
-                            violations.push(Violation::GitBrokenSymlink(repo_path));
-                        }
                     }
                 }
-                None => {
-                    violations.push(Violation::GitNameInvalid {
-                        module: p.to_str().unwrap().to_string(),
-                        name: git.to_owned(),
-                    });
-                }
-            };
+            }
+            Err(e) => violations.push(Violation::BrokenParaYaml {
+                module: p.into(),
+                error: e.to_string(),
+            }),
         }
-    });
+    }
 
     Ok(violations)
 }
