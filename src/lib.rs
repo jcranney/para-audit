@@ -162,18 +162,18 @@ pub fn read_yaml(module: &Path) -> Result<ParaYaml> {
 #[serde(deny_unknown_fields)]
 pub struct ParaYaml {
     #[serde(default, deserialize_with = "string_or_seq_string")]
-    pub gits: Option<Vec<String>>,
+    pub gits: Vec<String>,
     pub open: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,
 }
 
-fn string_or_seq_string<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+fn string_or_seq_string<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
     where D: Deserializer<'de>
 {
-    struct StringOrVec(PhantomData<Option<Vec<String>>>);
+    struct StringOrVec(PhantomData<Vec<String>>);
 
     impl<'de> de::Visitor<'de> for StringOrVec {
-        type Value = Option<Vec<String>>;
+        type Value = Vec<String>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("string or list of strings")
@@ -182,7 +182,7 @@ fn string_or_seq_string<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, 
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
             where E: de::Error
         {
-            Ok(Some(vec![value.to_owned()]))
+            Ok(vec![value.to_owned()])
         }
 
         fn visit_seq<S>(self, visitor: S) -> Result<Self::Value, S::Error>

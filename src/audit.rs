@@ -368,59 +368,56 @@ fn get_violations(config: &config::Config) -> Result<Vec<Violation>> {
     for p in module_paths.iter() {
         match read_yaml(p) {
             Ok(para_yaml) => {
-                if let Some(gits) = para_yaml.gits {
-                    for git in gits {
-                        match git.split('/').next_back() {
-                            Some(mut n) => {
-                                n = n.trim_end_matches(".git");
-                                let repo_path = p.join(n);
-                                if repo_path.is_dir() {
-                                    match Repository::open(&repo_path) {
-                                        Ok(repo) => {
-                                            let statuses = repo.statuses(None).unwrap();
-                                            let count: usize = statuses
-                                                .iter()
-                                                .filter(|s| s.status() != Status::IGNORED)
-                                                .count();
-                                            if count > 0 {
-                                                violations.push(Violation::GitNotSynced {
-                                                    count,
-                                                    repo: repo_path.clone(),
-                                                    module: p.to_str().unwrap().to_string(),
-                                                });
-                                            }
-                                            if repo.remotes().unwrap().is_empty() {
-                                                violations.push(Violation::GitNoRemote {
-                                                    repo: repo_path,
-                                                });
-                                            }
-                                        }
-                                        Err(e) => {
-                                            violations.push(Violation::GitBroken {
-                                                code: format!("{:?}", e.code()),
-                                                path: repo_path,
+                for git in para_yaml.gits {
+                    match git.split('/').next_back() {
+                        Some(mut n) => {
+                            n = n.trim_end_matches(".git");
+                            let repo_path = p.join(n);
+                            if repo_path.is_dir() {
+                                match Repository::open(&repo_path) {
+                                    Ok(repo) => {
+                                        let statuses = repo.statuses(None).unwrap();
+                                        let count: usize = statuses
+                                            .iter()
+                                            .filter(|s| s.status() != Status::IGNORED)
+                                            .count();
+                                        if count > 0 {
+                                            violations.push(Violation::GitNotSynced {
+                                                count,
+                                                repo: repo_path.clone(),
+                                                module: p.to_str().unwrap().to_string(),
                                             });
                                         }
-                                    };
-                                } else {
-                                    // it's not a directory
-                                    if !repo_path.is_file()  // and it's not a file
-                                    && repo_path.is_symlink()
-                                    // but it is still a symlink
-                                    {
-                                        // then it must be a broken symlink, so it should be deleted
-                                        violations.push(Violation::GitBrokenSymlink(repo_path));
+                                        if repo.remotes().unwrap().is_empty() {
+                                            violations
+                                                .push(Violation::GitNoRemote { repo: repo_path });
+                                        }
                                     }
+                                    Err(e) => {
+                                        violations.push(Violation::GitBroken {
+                                            code: format!("{:?}", e.code()),
+                                            path: repo_path,
+                                        });
+                                    }
+                                };
+                            } else {
+                                // it's not a directory
+                                if !repo_path.is_file()  // and it's not a file
+                                    && repo_path.is_symlink()
+                                // but it is still a symlink
+                                {
+                                    // then it must be a broken symlink, so it should be deleted
+                                    violations.push(Violation::GitBrokenSymlink(repo_path));
                                 }
                             }
-                            None => {
-                                violations.push(Violation::GitNameInvalid {
-                                    module: p.to_str().unwrap().to_string(),
-                                    name: git.to_owned(),
-                                });
-                            }
-                        };
-                    }
+                        }
+                        None => {
+                            violations.push(Violation::GitNameInvalid {
+                                module: p.to_str().unwrap().to_string(),
+                                name: git.to_owned(),
+                            });
+                        }
+                    };
                 }
             }
             Err(e) => violations.push(Violation::BrokenParaYaml {

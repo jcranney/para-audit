@@ -32,10 +32,8 @@ pub fn open(module: &PathBuf) -> Result<()> {
                 )))?;
             }
 
-            if let Some(gits) = para_yaml.gits {
-                for git in gits {
-                    init_git(&git, module)?;
-                }
+            for git in para_yaml.gits {
+                init_git(&git, module)?;
             }
         }
         Err(e) => {
