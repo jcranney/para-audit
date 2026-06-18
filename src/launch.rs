@@ -18,6 +18,10 @@ pub fn open(module: &PathBuf) -> Result<()> {
 
     match read_yaml(module) {
         Ok(para_yaml) => {
+            for git in para_yaml.gits {
+                init_git(&git, module)?;
+            }
+
             if let Some(cmd) = para_yaml.open
                 && !cmd.is_empty()
             {
@@ -30,10 +34,6 @@ pub fn open(module: &PathBuf) -> Result<()> {
                 command.status().or(Err(anyhow!(
                     "failed to spawn `open` command from para.yaml"
                 )))?;
-            }
-
-            for git in para_yaml.gits {
-                init_git(&git, module)?;
             }
         }
         Err(e) => {
