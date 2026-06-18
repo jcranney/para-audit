@@ -31,9 +31,11 @@ pub fn open(module: &PathBuf) -> Result<()> {
                     command.arg(arg);
                 }
                 command.current_dir(module);
-                command.status().or(Err(anyhow!(
-                    "failed to spawn `open` command from para.yaml"
-                )))?;
+                if command.status().is_err() {
+                    eprintln!(
+                        "{}", "failed to spawn `open` command from para.yaml".red()
+                    );
+                };
             }
         }
         Err(e) => {
