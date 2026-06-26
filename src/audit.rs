@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 use crate::{
-    config, get_home_path, get_module_paths, get_root_paths, print_count, read_yaml, search,
+    config, get_home_path, get_module_paths, get_root_paths, print_count, read_yaml,
     visit_all,
 };
 
@@ -52,7 +52,6 @@ enum Violation {
 }
 
 enum Fix {
-    MoveFile(PathBuf),
     ModName(PathBuf),
     CreateFile { file: String, module: PathBuf },
     Delete(PathBuf),
@@ -63,7 +62,6 @@ enum Fix {
 impl Violation {
     fn fix(self) -> Fix {
         match self {
-            Violation::RootDirClutter(p) | Violation::ModDirClutter(p) => Fix::MoveFile(p),
             Violation::ModDirName(p) => Fix::ModName(p),
             Violation::ModRequiredFileMissing { file, module } => Fix::CreateFile { file, module },
             Violation::DisallowedFile(p) | Violation::EmptyModule(p) => Fix::Delete(p),
@@ -78,20 +76,6 @@ impl Violation {
 impl std::fmt::Display for Fix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Fix::MoveFile(p) => {
-                let source = p.clone();
-                let destination = search::find_root("projects")
-                    .unwrap() // this is bad
-                    .unwrap()
-                    .join("CLUTTER")
-                    .join(p.file_name().unwrap());
-                writeln!(
-                    f,
-                    "mv \"{}\" \"{}\"",
-                    source.display(),
-                    destination.display()
-                )?;
-            }
             Fix::ModName(p) => {
                 let source = p.clone();
                 let destination = p.clone().parent().unwrap().join(

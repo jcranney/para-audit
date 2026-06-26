@@ -46,7 +46,7 @@ pub fn open(module: &PathBuf) -> Result<()> {
         }
     }
 
-    Command::new("zsh").current_dir(module).status()?;
+    Command::new("$SHELL").current_dir(module).status()?;
     Ok(())
 }
 

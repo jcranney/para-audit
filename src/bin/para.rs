@@ -18,23 +18,30 @@ enum Commands {
         /// level of verbosity to show, 0->10
         level: Option<u32>,
     },
+    /// open a module to work on
+    #[clap(alias = "o")]
+    Open {
+        /// module name or substring
+        module: String,
+    },
     /// search para modules
     #[clap(alias = "s")]
     Search {
         /// string to search for in para modules
         search_string: String,
     },
+    /// create a new module, by default in the projects root
+    New {
+        /// name of the module
+        name: String,
+        /// which root
+        root: Option<String>,
+    },
     /// list all para modules, optionally by module type
     #[clap(alias = "ls")]
     List {
         /// module type (e.g., [project], area, resource, archive, all)
         root: Option<String>,
-    },
-    /// open a module to work on
-    #[clap(alias = "o")]
-    Open {
-        /// module name or substring
-        module: String,
     },
     /// move a module between roots
     #[clap(alias = "mv")]
@@ -49,19 +56,6 @@ enum Commands {
     Stats {
         /// minimum count for showing extensions
         min_count: Option<u32>,
-    },
-    /// create a new module, by default in the projects root
-    New {
-        /// name of the module
-        name: String,
-        /// which root
-        root: Option<String>,
-    },
-    /// edit the README.md of a particular module
-    #[clap(alias = "edit")]
-    Note {
-        /// name of the module
-        module: String,
     },
     /// list all tags
     Tags {
@@ -169,13 +163,6 @@ fn main() -> Result<()> {
             }
             module_path = module_path.join(name);
             layout::new(module_path)?;
-        }
-        Commands::Note { module } => {
-            if let Some(module) = search::find_module(module)? {
-                launch::edit_note(module.join("README.md"))?;
-            } else {
-                return Err(anyhow!("can't find module"));
-            }
         }
         Commands::Tags { count } => {
             let count = count.unwrap_or(5);
