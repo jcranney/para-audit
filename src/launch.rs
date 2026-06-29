@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Error, Result, anyhow};
 use colored::Colorize;
 use std::{
     path::{Path, PathBuf},
@@ -11,15 +11,19 @@ pub fn open(module: &PathBuf) -> Result<()> {
     // print module path to std for "goto"/"cd" like command
     eprintln!(
         "{}",
-        format!("opening: {}", module.file_name().unwrap().to_str().unwrap(),)
-            .green()
-            .italic()
+        format!(
+            "{}: {}",
+            "opening".green(),
+            module.file_name().unwrap().to_str().unwrap().italic(),
+        )
     );
 
     match read_yaml(module) {
         Ok(para_yaml) => {
             for git in para_yaml.gits {
-                init_git(&git, module)?;
+                if let Err(e) = init_git(&git, module) {
+                    eprintln!("{}: {}", e.to_string().red(), &git.italic());
+                }
             }
 
             if let Some(cmd) = para_yaml.open
@@ -32,9 +36,7 @@ pub fn open(module: &PathBuf) -> Result<()> {
                 }
                 command.current_dir(module);
                 if command.status().is_err() {
-                    eprintln!(
-                        "{}", "failed to spawn `open` command from para.yaml".red()
-                    );
+                    eprintln!("{}", "failed to spawn `open` command from para.yaml".red());
                 };
             }
         }
@@ -46,7 +48,8 @@ pub fn open(module: &PathBuf) -> Result<()> {
         }
     }
 
-    Command::new("$SHELL").current_dir(module).status()?;
+    let shell = std::env::var("SHELL").unwrap_or("bash".to_string());
+    Command::new(shell).current_dir(module).status()?;
     Ok(())
 }
 
