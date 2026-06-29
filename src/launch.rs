@@ -1,4 +1,4 @@
-use anyhow::{Error, Result, anyhow};
+use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::{
     path::{Path, PathBuf},
