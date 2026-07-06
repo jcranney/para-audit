@@ -110,6 +110,9 @@ project directory whenever I run:
 para open my_project
 ```
 `para` will also launch and join a shell session from that directory, whether I have specified an `open` property or not.
+The launched shell session will also export an environment variable named `MOD` equal to the module working directory. This is
+to allow the user to "wander off" from the home directory and then trivially return home to the module by calling `cd $MOD`
+without thinking about the exact path of the module or re-launching the `para open` command.
 
 ---
 

@@ -10,12 +10,9 @@ use crate::{get_git_path, read_yaml};
 pub fn open(module: &PathBuf) -> Result<()> {
     // print module path to std for "goto"/"cd" like command
     eprintln!(
-        "{}",
-        format!(
-            "{}: {}",
-            "opening".green(),
-            module.file_name().unwrap().to_str().unwrap().italic(),
-        )
+        "{}: {}",
+        "opening".green(),
+        module.file_name().unwrap().to_str().unwrap().italic(),
     );
 
     match read_yaml(module) {
@@ -49,7 +46,10 @@ pub fn open(module: &PathBuf) -> Result<()> {
     }
 
     let shell = std::env::var("SHELL").unwrap_or("bash".to_string());
-    Command::new(shell).current_dir(module).status()?;
+    Command::new(shell)
+        .current_dir(module)
+        .env("MOD", module)
+        .status()?;
     Ok(())
 }
 
