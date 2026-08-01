@@ -221,6 +221,8 @@ impl Violation {
 }
 
 fn get_violations(config: &config::Config) -> Result<Vec<Violation>> {
+    // TODO: Actually implement the "ignored_files" config element
+    let config::Config{ disallowed_files, ignore_files, default_open } = config;
     let mut violations: Vec<Violation> = vec![];
 
     let home_path = get_home_path()?;
