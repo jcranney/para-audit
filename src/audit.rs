@@ -109,7 +109,7 @@ impl std::fmt::Display for Fix {
                 )?;
             }
             Fix::EditFile(p) => {
-                writeln!(f, "vim {}", p.display())?;
+                writeln!(f, "vim \"{}\"", p.display())?;
             }
             Fix::None => (),
         };

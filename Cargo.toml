@@ -1,6 +1,6 @@
 [package]
 name = "para-audit"
-version = "0.1.22"
+version = "0.2.1"
 edition = "2024"
 description = "A simple CLT for supervising/interfacing with a storage convention based on Tiago Forte's Second Brain - PARA principle."
 readme = "README.md"
@@ -10,12 +10,12 @@ keywords = ["cli","clt","para","second-brain"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-anyhow = "1.0.103"
-clap = { version = "4.6.1", features = ["derive"] }
+anyhow = "1.0.104"
+clap = { version = "4.6.5", features = ["derive"] }
 colored = "3.1.1"
 git2 = "0.21.0"
-regex = "1.12.4"
-serde = { version = "1.0.228", features = ["derive"] }
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
 strsim = "0.11.1"
-thiserror = "2.0.18"
+thiserror = "2.0.19"
 yaml_serde = "0.10.4"

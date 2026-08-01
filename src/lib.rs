@@ -7,6 +7,7 @@ use serde::de;
 use std::env;
 use std::fmt;
 use std::fs;
+use std::io;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 pub mod audit;
@@ -18,27 +19,52 @@ use anyhow::Result;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-enum ParaError {
+pub enum ParaError {
     #[error("{0} environment variable not set")]
     EnvVariableNotFound(String),
     #[error("cannot create path for config, set PARA_CONFIG manually")]
     CannotCreateConfigPath,
+    #[error("{0}")]
+    YamlSerdeError(yaml_serde::Error),
+    #[error("{0}")]
+    IOError(io::Error),
 }
 
+impl From<yaml_serde::Error> for ParaError {
+    fn from(value: yaml_serde::Error) -> Self {
+        ParaError::YamlSerdeError(value)
+    }
+}
+
+impl From<io::Error> for ParaError {
+    fn from(value: io::Error) -> Self {
+        ParaError::IOError(value)
+    }
+}
+
+/// helper function to parse an environment variable name into the path that
+/// the variable specifies
 fn get_env_path(envvar: &str) -> Result<PathBuf> {
     Ok(PathBuf::from(&env::var(envvar).map_err(|_| {
         ParaError::EnvVariableNotFound(envvar.to_string())
     })?))
 }
 
+/// try to load the PARA_HOME environment variable, returning the specified
+/// path
 pub fn get_home_path() -> Result<PathBuf> {
     get_env_path("PARA_HOME")
 }
 
+/// try to load the PARA_GIT environment variable, returning the specified
+/// path
 pub fn get_git_path() -> Result<PathBuf> {
     get_env_path("PARA_GIT")
 }
 
+/// try to load the PARA_CONFIG environment variable. If it's not specified,
+/// then try to create a config file at the default
+/// $HOME/.config/para-audit/config.yaml location, and then return that path.
 pub fn get_config_path() -> Result<PathBuf> {
     if let Ok(path) = get_env_path("PARA_CONFIG") {
         return Ok(path);
@@ -52,6 +78,7 @@ pub fn get_config_path() -> Result<PathBuf> {
     Err(ParaError::CannotCreateConfigPath)?
 }
 
+/// try to load the root paths (e.g., "projects","areas",...,"archive")
 pub fn get_root_paths() -> Result<Vec<PathBuf>> {
     let mut root_paths = vec![];
     for entry in get_home_path()?
@@ -67,6 +94,7 @@ pub fn get_root_paths() -> Result<Vec<PathBuf>> {
     Ok(root_paths)
 }
 
+/// try to load all the module paths (under all the root paths)
 pub fn get_module_paths() -> Result<Vec<PathBuf>> {
     // Check each top level dir to see if it only contains folders (no files)
     let root_paths = get_root_paths()?;
@@ -168,7 +196,8 @@ pub struct ParaYaml {
 }
 
 fn string_or_seq_string<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-    where D: Deserializer<'de>
+where
+    D: Deserializer<'de>,
 {
     struct StringOrVec(PhantomData<Vec<String>>);
 
@@ -180,13 +209,15 @@ fn string_or_seq_string<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error
         }
 
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where E: de::Error
+        where
+            E: de::Error,
         {
             Ok(vec![value.to_owned()])
         }
 
         fn visit_seq<S>(self, visitor: S) -> Result<Self::Value, S::Error>
-            where S: de::SeqAccess<'de>
+        where
+            S: de::SeqAccess<'de>,
         {
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(visitor))
         }

@@ -1,7 +1,16 @@
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
-use para_audit::{audit, config, launch, layout, search};
-use std::path::PathBuf;
+use para_audit::{ParaError, get_git_path, get_home_path, get_module_paths, get_root_paths};
+use para_audit::{
+    audit,
+    config::{self, Config},
+    launch, layout, search,
+};
+use std::process::exit;
+use std::{path::PathBuf};
+
+const TICK_MARK: char = char::from_u32(0x2705).unwrap();
+const CROSS_MARK: char = char::from_u32(0x274c).unwrap();
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -64,28 +73,34 @@ enum Commands {
     },
     /// list fixes to problems identified by audit
     Fix { level: Option<u32> },
+    /// check status of para configuration
+    Doctor,
 }
 
 fn main() -> Result<()> {
     // need a philosophy around config files. I'm thinking:
     //   if PARA_CONFIG env variable exists, then this is the file path.
     //   else $HOME/.config/para-audit/config.yaml is the path.
-    //  
+    //
     //   if file exists at path, then use it as is,
     //   otherwise create it and populate with defaults
     let config_path = para_audit::get_config_path()?;
     let config = match config::Config::read_yaml(&config_path) {
         Ok(config) => config,
-        Err(_) => {
+        Err(ParaError::IOError(_)) => {
             // coulnd't read a yaml file at the defined config path,
             // create a default one and try to save it there instead.
             let config = config::Config::default();
             config.write_yaml(&config_path)?;
             config
+        }
+        Err(e) => {
+            eprintln!("couldn't parse config file at {}, {}", config_path.display(), e);
+            eprintln!("If you move the file out of the way, then I'll create a valid default config there in it's place.");
+            exit(1);
         },
     };
-    // config.write_yaml("para_config.yaml")?;    
-    
+
     let args = Args::parse();
     match &args.command {
         Commands::Audit { level } => audit::audit(level.unwrap_or(10), &config)?,
@@ -173,6 +188,43 @@ fn main() -> Result<()> {
                 .for_each(|(x, y)| para_audit::print_count(&x[..], y));
         }
         Commands::Fix { level } => audit::propose_fixes(level.unwrap_or(10), &config)?,
+        Commands::Doctor => {
+            // is para-home set?
+            match get_home_path() {
+                Ok(p) => println!("{TICK_MARK} PARA_HOME: {}", p.display()),
+                Err(e) => println!("{CROSS_MARK} {e}"),
+            }
+
+            // is the config path set?
+            println!("{TICK_MARK} PARA_CONFIG: {}", config_path.display());
+
+            // is there a config file at the path?
+            match Config::read_yaml(&config_path) {
+                Ok(_) => {
+                    println!("{TICK_MARK} Config file exists and is readable",);
+                }
+                Err(e) => println!("{CROSS_MARK} {e}"),
+            };
+
+            // is para git set?
+            match get_git_path() {
+                Ok(p) => println!("{TICK_MARK} PARA_GIT: {}", p.display()),
+                Err(e) => println!("{CROSS_MARK} {e}"),
+            }
+
+            // can we load root paths?
+            match get_root_paths() {
+                Ok(v) => println!("{TICK_MARK} Root paths exist, found {} root paths", v.len()),
+                Err(e) => println!("{CROSS_MARK} {e}"),
+            }
+
+            // can we load module paths?
+                        // can we load root paths?
+            match get_module_paths() {
+                Ok(v) => println!("{TICK_MARK} Module paths exist, found {} module paths", v.len()),
+                Err(e) => println!("{CROSS_MARK} {e}"),
+            }
+        }
     }
     Ok(())
 }
