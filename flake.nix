@@ -14,7 +14,7 @@
           cargoLock.lockFile = ./Cargo.lock;
           src = ./.;
           nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl ];
+          buildInputs = with pkgs; [ openssl libgit2 ];
           meta = {
             description = "A tool for auditing/organising/interacting with my para system.";
             homepage = "https://github.com/jcranney/para-audit";
